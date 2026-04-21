@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import ProfileCard from "./ProfileCard"
+import RepoCard from "./RepoCard"
 
 function Header() {
   const [username, setUsername] = useState('')
   const [userData, setUserData] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [repos, setRepos] = useState([])
 
   const handleSearch = () => {
     setLoading(true)
@@ -27,7 +29,16 @@ function Header() {
           setLoading(false)
         }
       })
+
+    fetch(`https://api.github.com/users/${username}/repos`)
+      .then(res => res.json())
+      .then(repoData => {
+        console.log(repoData)
+        setRepos(repoData)
+      })
   }
+
+  const sortedRepos = [...repos].sort((a, b) => b.stargazers_count - a.stargazers_count)
 
   return (
     <>
@@ -69,6 +80,12 @@ function Header() {
       )}
       {error && <p style={{ color: "red", marginTop: "10px" }}>{error}</p>}
       {userData && <ProfileCard userData={userData} />}
+      {repos.length > 0 && (
+        <div style={{ marginTop: "20px" }}>
+          <h3>Repositories</h3>
+          {sortedRepos.map((repo, index) => <RepoCard key={repo.id} repo={repo} isTop={index === 0} />)}
+        </div>
+      )}
     </>
   )
 }
