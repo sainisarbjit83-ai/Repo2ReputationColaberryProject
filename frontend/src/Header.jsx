@@ -12,7 +12,7 @@ function Header() {
   const handleSearch = () => {
     setLoading(true)
     setError(null)
-    fetch(`https://api.github.com/users/${username}`)
+    fetch(`http://localhost:5000/api/github/${username}`)
       .then(res => {
         if (!res.ok) {
           setError("User not found")
@@ -25,16 +25,10 @@ function Header() {
       .then(data => {
         if (data) {
           console.log(data)
-          setUserData(data)
+          setUserData(data.profile)
+          setRepos(data.repos)
           setLoading(false)
         }
-      })
-
-    fetch(`https://api.github.com/users/${username}/repos`)
-      .then(res => res.json())
-      .then(repoData => {
-        console.log(repoData)
-        setRepos(repoData)
       })
   }
 
