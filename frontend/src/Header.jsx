@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import ProfileCard from "./ProfileCard"
 import RepoCard from "./RepoCard"
+import { authFetch } from './api'
 
-function Header() {
+function Header({ onLogout }) {
   const [username, setUsername] = useState('')
   const [userData, setUserData] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -12,10 +13,15 @@ function Header() {
   const handleSearch = () => {
     setLoading(true)
     setError(null)
-    fetch(`http://localhost:5000/api/github/${username}`)
+
+    authFetch(`http://localhost:5000/api/github/${username}`, {}, onLogout)
       .then(res => {
+        if (res === null) {
+          setLoading(false)
+          return null
+        }
         if (!res.ok) {
-          setError("User not found")
+          setError(res.status === 404 ? "User not found." : "Something went wrong. Try again.")
           setUserData(null)
           setLoading(false)
           return null
@@ -30,17 +36,25 @@ function Header() {
           setLoading(false)
         }
       })
+      .catch(() => {
+        setError("Network error. Please check your connection.")
+        setLoading(false)
+      })
   }
 
   const sortedRepos = [...repos].sort((a, b) => b.stargazers_count - a.stargazers_count)
 
   return (
     <>
-      <h1>Repo2Reputation 🚀</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1>Repo2Reputation 🚀</h1>
+        <button onClick={onLogout} style={{ padding: '6px 14px' }}>Logout</button>
+      </div>
       <input
         placeholder="Enter GitHub username"
         value={username}
         onChange={(e) => setUsername(e.target.value)}
+        disabled={loading}
         style={{ width: "100%", padding: "10px", marginBottom: "10px", borderRadius: "6px", border: "1px solid #ccc", fontSize: "16px" }}
         onFocus={(e) => { e.target.style.borderColor = "#4f46e5"; e.target.style.outline = "none" }}
         onBlur={(e) => e.target.style.borderColor = "#ccc"}
