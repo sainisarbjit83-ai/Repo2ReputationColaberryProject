@@ -1,16 +1,23 @@
+require('dotenv').config();
 const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
+const authRouter = require("./routes/auth");
+const authMiddleware = require("./middleware/authMiddleware");
+
 
 const app = express();
 const PORT = 5000;
 
 app.use(cors());
+app.use(express.json());
+
+app.use("/api/auth", authRouter);
 
 app.get("/", (req, res) => {
   res.send("Backend is running 🚀");
 });
-app.get("/api/github/:username", async (req, res) => {
+app.get("/api/github/:username", authMiddleware, async (req, res) => {
   try {
     const { username } = req.params;
 
@@ -43,7 +50,6 @@ app.get("/api/github/:username", async (req, res) => {
   res.status(500).json({ error: error.message });
 }
 });
-
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
