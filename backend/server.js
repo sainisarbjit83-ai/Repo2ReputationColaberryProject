@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const axios = require("axios");
 const authRouter = require("./routes/auth");
+const usersRouter = require("./routes/users");
 const authMiddleware = require("./middleware/authMiddleware");
 
 
@@ -13,6 +14,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use("/api/auth", authRouter);
+app.use("/api/users", usersRouter);
 
 app.get("/", (req, res) => {
   res.send("Backend is running 🚀");
