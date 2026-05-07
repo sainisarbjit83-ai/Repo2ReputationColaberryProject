@@ -25,8 +25,8 @@ function LoginForm({ onLogin, onSwitchToRegister, sessionMessage }) {
         return
       }
 
-      localStorage.setItem('token', data.token)
-      onLogin(data.token)
+      localStorage.setItem('token', data.accessToken)
+      onLogin(data.accessToken)
     } catch (err) {
       setError('Could not reach server.')
       setLoading(false)
