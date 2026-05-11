@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import RepoCard from './RepoCard'
+import AnalysisPanel from './AnalysisPanel'
 import { authFetch, BASE_URL } from './api'
 
 const btn = (overrides = {}) => ({
@@ -274,16 +275,13 @@ function Header({ onLogout }) {
             </>
           )}
 
-          {/* Imported tab */}
+          {/* Imported + Analysis tab */}
           {activeTab === 'imported' && (
             <>
-              {importedLoading && <p style={{ color: '#6b7280' }}>Loading…</p>}
-              {!importedLoading && normImported.length === 0 && (
-                <p style={{ color: '#6b7280' }}>No repos imported yet. Go to Browse and select repos to import.</p>
-              )}
-              {!importedLoading && normImported.map(repo => (
-                <RepoCard key={repo.id} repo={repo} isTop={false} />
-              ))}
+              {importedLoading
+                ? <p style={{ color: '#6b7280' }}>Loading…</p>
+                : <AnalysisPanel importedRepos={importedRepos} onLogout={onLogout} />
+              }
             </>
           )}
         </>
