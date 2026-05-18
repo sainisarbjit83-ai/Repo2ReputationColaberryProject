@@ -2,8 +2,27 @@ import { useState } from 'react'
 import Header from './Header'
 import LoginForm from './LoginForm'
 import RegisterForm from './RegisterForm'
+import PublicPortfolio from './PublicPortfolio'
+import RecruiterSearch from './RecruiterSearch'
 
 function App() {
+  const path = window.location.pathname
+
+  // Recruiter search — public, no auth
+  if (path === '/search' || path === '/search/') {
+    return <RecruiterSearch />
+  }
+
+  // Public portfolio route — bypass auth entirely
+  // Matches /portfolio/:slug  OR  /portfolios/public/:slug
+  const portfolioMatch =
+    path.match(/^\/portfolio\/([^/]+)\/?$/) ||
+    path.match(/^\/portfolios\/public\/([^/]+)\/?$/)
+  if (portfolioMatch) {
+    const slug = portfolioMatch[1]
+    if (slug) return <PublicPortfolio slug={slug} />
+  }
+
   const storedToken = localStorage.getItem('token')
   const isValidTokenShape = storedToken && storedToken.split('.').length === 3
   if (!isValidTokenShape && storedToken) localStorage.removeItem('token')

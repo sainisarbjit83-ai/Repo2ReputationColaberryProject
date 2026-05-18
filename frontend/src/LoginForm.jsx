@@ -1,78 +1,148 @@
 import { useState } from 'react'
 
 function LoginForm({ onLogin, onSwitchToRegister, sessionMessage }) {
-  const [email, setEmail] = useState('')
+  const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [error, setError]       = useState(null)
+  const [loading, setLoading]   = useState(false)
 
-  const handleLogin = async () => {
+  async function handleLogin() {
     setLoading(true)
     setError(null)
 
     try {
-      const res = await fetch('http://localhost:5000/api/auth/login', {
-        method: 'POST',
+      const res  = await fetch('http://localhost:5000/api/auth/login', {
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body:    JSON.stringify({ email, password }),
       })
-
       const data = await res.json()
 
       if (!res.ok) {
-        setError(data.error || 'Login failed.')
+        setError(data.error?.message || data.error || 'Login failed.')
         setLoading(false)
         return
       }
 
       localStorage.setItem('token', data.accessToken)
       onLogin(data.accessToken)
-    } catch (err) {
+    } catch {
       setError('Could not reach server.')
       setLoading(false)
     }
   }
 
   return (
-    <div style={{ maxWidth: '400px', margin: '80px auto' }}>
-      {sessionMessage && (
-        <p style={{ color: '#92400e', backgroundColor: '#fef3c7', padding: '10px', borderRadius: '6px', marginBottom: '12px' }}>
-          {sessionMessage}
-        </p>
-      )}
-      <h2>Login</h2>
-      <input
-        type="email"
-        placeholder="Email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        style={{ display: 'block', width: '100%', padding: '8px', marginBottom: '10px' }}
-      />
-      <input
-        type="password"
-        placeholder="Password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        style={{ display: 'block', width: '100%', padding: '8px', marginBottom: '10px' }}
-        onKeyDown={(e) => { if (e.key === 'Enter') handleLogin() }}
-      />
-      <button
-        onClick={handleLogin}
-        disabled={loading}
-        style={{ padding: '8px 16px' }}
-      >
-        {loading ? 'Logging in...' : 'Login'}
-      </button>
-      {error && <p style={{ color: 'red', marginTop: '10px' }}>{error}</p>}
-      <p style={{ marginTop: '16px', fontSize: '14px' }}>
-        Don't have an account?{' '}
-        <span
-          onClick={onSwitchToRegister}
-          style={{ color: '#4f46e5', cursor: 'pointer', textDecoration: 'underline' }}
-        >
-          Register
-        </span>
-      </p>
+    <div className="min-h-screen flex">
+
+      {/* LEFT PANEL */}
+      <div className="hidden lg:flex w-1/2 bg-indigo-600 flex-col justify-between p-12">
+
+        {/* Top: logo + brand */}
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 bg-white rounded-xl flex items-center justify-center">
+            <span className="text-indigo-600 font-bold text-lg">R</span>
+          </div>
+          <span className="text-white font-bold text-lg">Repo2Reputation</span>
+        </div>
+
+        {/* Middle: tagline + features */}
+        <div>
+          <h2 className="text-4xl font-bold text-white leading-tight mb-4">
+            Turn your GitHub work into a reputation that speaks for you.
+          </h2>
+          <p className="text-indigo-200 text-base leading-relaxed mb-8">
+            We analyze your repositories and highlight your skills, impact, and expertise.
+          </p>
+          <div className="space-y-4">
+            {[
+              'AI-powered repository analysis',
+              'Automatic skill & tech extraction',
+              'Portfolio-ready reports',
+            ].map(feature => (
+              <div key={feature} className="flex items-center gap-3 text-indigo-100">
+                <div className="w-5 h-5 rounded-full bg-indigo-500 flex items-center justify-center flex-shrink-0">
+                  <span className="text-white text-xs">✓</span>
+                </div>
+                <span className="text-sm">{feature}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Bottom: copyright */}
+        <p className="text-indigo-400 text-xs">© 2026 Repo2Reputation</p>
+      </div>
+
+      {/* RIGHT PANEL */}
+      <div className="w-full lg:w-1/2 flex items-center justify-center bg-white p-8">
+        <div className="max-w-sm w-full">
+
+          {/* Session expired banner */}
+          {sessionMessage && (
+            <div className="mb-5 px-4 py-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 text-sm font-medium">
+              {sessionMessage}
+            </div>
+          )}
+
+          {/* Logo + brand (mobile only — hidden on desktop where left panel shows it) */}
+          <div className="flex items-center gap-2 mb-6 lg:hidden">
+            <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center">
+              <span className="text-white font-bold">R</span>
+            </div>
+            <span className="text-indigo-600 font-bold text-lg">Repo2Reputation</span>
+          </div>
+
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome back</h2>
+          <p className="text-gray-500 text-sm mb-8">Sign in to your account to continue.</p>
+
+          {/* Inputs */}
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            className="w-full border border-gray-300 rounded-xl px-4 py-3 mb-4 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleLogin() }}
+            className="w-full border border-gray-300 rounded-xl px-4 py-3 mb-6 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+
+          {/* Error banner */}
+          {error && (
+            <div className="mb-4 px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm font-medium">
+              {error}
+            </div>
+          )}
+
+          {/* Submit */}
+          <button
+            onClick={handleLogin}
+            disabled={loading}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl text-sm transition disabled:opacity-50"
+          >
+            {loading ? 'Signing in…' : 'Sign in'}
+          </button>
+
+          {/* Switch to register */}
+          <p className="mt-6 text-sm text-gray-500 text-center">
+            Don't have an account?{' '}
+            <span
+              onClick={onSwitchToRegister}
+              className="text-indigo-600 cursor-pointer hover:underline font-medium"
+            >
+              Register
+            </span>
+          </p>
+
+        </div>
+      </div>
+
     </div>
   )
 }

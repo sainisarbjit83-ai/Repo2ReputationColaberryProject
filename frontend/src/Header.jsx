@@ -1,99 +1,105 @@
-import { useState, useEffect } from 'react'
-import RepoCard from './RepoCard'
+import { useEffect, useState } from 'react'
 import AnalysisPanel from './AnalysisPanel'
+import PortfolioBuilder from './PortfolioBuilder'
 import { authFetch, BASE_URL } from './api'
 
-const btn = (overrides = {}) => ({
-  padding: '9px 20px',
-  borderRadius: '6px',
-  border: 'none',
-  backgroundColor: '#4f46e5',
-  color: 'white',
-  fontWeight: 'bold',
-  cursor: 'pointer',
-  fontSize: '14px',
-  ...overrides,
-})
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const LANG_COLORS = {
+  TypeScript: '#3178c6',
+  JavaScript: '#f1e05a',
+  Python:     '#3572A5',
+  Ruby:       '#701516',
+  Go:         '#00ADD8',
+  Java:       '#b07219',
+  Rust:       '#dea584',
+  'C++':      '#f34b7d',
+  Shell:      '#89e051',
+  HTML:       '#e34c26',
+  CSS:        '#563d7c',
+  Dart:       '#00B4AB',
+  Kotlin:     '#A97BFF',
+  Swift:      '#ffac45',
+}
+
+function langColor(lang) {
+  return LANG_COLORS[lang] || '#8b949e'
+}
+
+const DEVICON_BASE = 'https://cdn.jsdelivr.net/gh/devicons/devicon@v2.15.1/icons'
+const LANG_ICONS = {
+  TypeScript: `${DEVICON_BASE}/typescript/typescript-original.svg`,
+  JavaScript: `${DEVICON_BASE}/javascript/javascript-original.svg`,
+  Python:     `${DEVICON_BASE}/python/python-original.svg`,
+  Ruby:       `${DEVICON_BASE}/ruby/ruby-original.svg`,
+  Go:         `${DEVICON_BASE}/go/go-original.svg`,
+  Java:       `${DEVICON_BASE}/java/java-original.svg`,
+  Rust:       `${DEVICON_BASE}/rust/rust-plain.svg`,
+  HTML:       `${DEVICON_BASE}/html5/html5-original.svg`,
+  CSS:        `${DEVICON_BASE}/css3/css3-original.svg`,
+  Dart:       `${DEVICON_BASE}/dart/dart-original.svg`,
+  Kotlin:     `${DEVICON_BASE}/kotlin/kotlin-original.svg`,
+  Swift:      `${DEVICON_BASE}/swift/swift-original.svg`,
+}
+
+function langIcon(lang) {
+  return LANG_ICONS[lang] || null
+}
+
+function formatDate(iso) {
+  if (!iso) return null
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 3
 
 function Header({ onLogout }) {
-  const [user, setUser]                   = useState(null)
+  const [repos, setRepos]                 = useState([])
+  const [loading, setLoading]             = useState(true)
+  const [selected, setSelected]           = useState(new Set())
+  const [importing, setImporting]         = useState(false)
+  const [importSuccess, setImportSuccess] = useState(null)
+  const [importError, setImportError]     = useState(null)
+  const [importedRepos, setImportedRepos] = useState([])
+  const [importedCount, setImportedCount] = useState(0)
+  const [currentPage, setCurrentPage]     = useState(1)
+  const [activeTab, setActiveTab]         = useState('browse')
+  const [githubUsername, setGithubUsername] = useState(null)
+  const [searchQuery, setSearchQuery]     = useState('')
   const [githubInput, setGithubInput]     = useState('')
-  const [connectLoading, setConnectLoading] = useState(false)
+  const [connecting, setConnecting]       = useState(false)
   const [connectError, setConnectError]   = useState(null)
 
-  const [repos, setRepos]               = useState([])
-  const [reposLoading, setReposLoading] = useState(false)
-  const [reposError, setReposError]     = useState(null)
-  const [reposPage, setReposPage]       = useState(1)
-
-  const [selected, setSelected]           = useState(new Set())
-  const [importLoading, setImportLoading] = useState(false)
-  const [importResults, setImportResults] = useState(null)
-
-  const [importedRepos, setImportedRepos]     = useState([])
-  const [importedLoading, setImportedLoading] = useState(false)
-  const [activeTab, setActiveTab]             = useState('browse')
-
-  // Load current user on mount — check if GitHub already connected
   useEffect(() => {
-    authFetch(`${BASE_URL}/api/users/me`, {}, onLogout)
-      .then(res => res?.json())
-      .then(data => {
-        if (data) {
-          setUser(data)
-          if (data.github_username) loadRepos(1)
-        }
-      })
+    fetchRepos()
+    fetchImportedRepos()
+    fetchCurrentUser()
   }, [])
 
-  function loadRepos(page) {
-    setReposLoading(true)
-    setReposError(null)
-    authFetch(`${BASE_URL}/api/repos?page=${page}&limit=30`, {}, onLogout)
-      .then(res => res?.json())
-      .then(data => {
-        if (data?.success) {
-          setRepos(data.data)
-          setReposPage(page)
-        } else {
-          setReposError(data?.error?.message || 'Failed to load repositories.')
-        }
-        setReposLoading(false)
-      })
-      .catch(() => { setReposError('Network error.'); setReposLoading(false) })
+  async function fetchCurrentUser() {
+    const res = await authFetch(`${BASE_URL}/api/users/me`, {}, onLogout)
+    if (!res) return
+    const json = await res.json()
+    setGithubUsername(json.github_username || null)
   }
 
-  function loadImported() {
-    setImportedLoading(true)
-    authFetch(`${BASE_URL}/api/repos/imported?limit=50`, {}, onLogout)
-      .then(res => res?.json())
-      .then(data => {
-        if (data?.success) setImportedRepos(data.data)
-        setImportedLoading(false)
-      })
-      .catch(() => setImportedLoading(false))
+  async function fetchRepos() {
+    const res = await authFetch(`${BASE_URL}/api/repos`, {}, onLogout)
+    if (!res) return
+    const json = await res.json()
+    setRepos(json.data || [])
+    setCurrentPage(1)
+    setLoading(false)
   }
 
-  function handleConnect() {
-    if (!githubInput.trim()) return
-    setConnectLoading(true)
-    setConnectError(null)
-    authFetch(`${BASE_URL}/api/users/me/github`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ githubUsername: githubInput.trim() }),
-    }, onLogout)
-      .then(res => res?.json())
-      .then(data => {
-        if (data?.success) {
-          setUser(prev => ({ ...prev, github_username: data.data.githubUsername }))
-          loadRepos(1)
-        } else {
-          setConnectError(data?.error?.message || 'Failed to connect GitHub.')
-        }
-        setConnectLoading(false)
-      })
-      .catch(() => { setConnectError('Network error.'); setConnectLoading(false) })
+  async function fetchImportedRepos() {
+    const res = await authFetch(`${BASE_URL}/api/repos/imported`, {}, onLogout)
+    if (!res) return
+    const json = await res.json()
+    setImportedRepos(json.data || [])
+    setImportedCount(json.meta?.total || 0)
   }
 
   function toggleSelect(fullName) {
@@ -104,189 +110,392 @@ function Header({ onLogout }) {
     })
   }
 
-  function handleImport() {
-    if (selected.size === 0) return
-    setImportLoading(true)
-    setImportResults(null)
-    authFetch(`${BASE_URL}/api/repos/import`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ repoFullNames: [...selected] }),
-    }, onLogout)
-      .then(res => res?.json())
-      .then(data => {
-        setImportResults(data?.data)
-        setSelected(new Set())
-        setImportLoading(false)
-        setActiveTab('imported')
-        loadImported()
-      })
-      .catch(() => setImportLoading(false))
+  async function handleImport() {
+    if (selected.size === 0 || importing) return
+    setImporting(true)
+    setImportError(null)
+    setImportSuccess(null)
+
+    const res = await authFetch(
+      `${BASE_URL}/api/repos/import`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repoFullNames: [...selected] }),
+      },
+      onLogout
+    )
+
+    if (!res) { setImporting(false); return }
+
+    const json = await res.json()
+    setImporting(false)
+
+    if (json.success) {
+      const succeeded = json.data.results.filter(r => r.status === 'succeeded').length
+      const failed    = json.data.results.filter(r => r.status === 'failed').length
+      setImportSuccess(failed > 0 ? `${succeeded} succeeded, ${failed} failed` : `${succeeded} succeeded`)
+      setSelected(new Set())
+      fetchImportedRepos()
+    } else {
+      setImportError(json.error?.message || 'Import failed.')
+    }
   }
 
-  // Normalise GitHub API response to match RepoCard's expected field names
-  const normalise = r => ({
-    id:              r.externalRepoId ?? r.id,
-    name:            r.name,
-    html_url:        `https://github.com/${r.fullName ?? r.full_name}`,
-    description:     r.description,
-    language:        r.language ?? r.primary_language,
-    stargazers_count: r.starsCount ?? r.stars_count,
-    updated_at:      r.repoUpdatedAt ?? r.repo_updated_at,
-    fullName:        r.fullName ?? r.full_name,
-  })
+  async function handleConnectGitHub(e) {
+    e.preventDefault()
+    if (!githubInput.trim() || connecting) return
+    setConnecting(true)
+    setConnectError(null)
+    const res = await authFetch(`${BASE_URL}/api/users/me/github`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ githubUsername: githubInput.trim() }),
+    }, onLogout)
+    if (!res) { setConnecting(false); return }
+    const json = await res.json()
+    setConnecting(false)
+    if (json.success) {
+      setGithubUsername(json.data.githubUsername)
+      setGithubInput('')
+      setLoading(true)
+      fetchRepos()
+    } else {
+      setConnectError(json.error?.message || 'Could not connect GitHub account.')
+    }
+  }
 
-  const sortedRepos    = [...repos].map(normalise).sort((a, b) => b.stargazers_count - a.stargazers_count)
-  const normImported   = importedRepos.map(normalise)
+  function handleTabSwitch(tab) {
+    setActiveTab(tab)
+    if (tab === 'imported') fetchImportedRepos()
+  }
+
+  // Pagination derived values (browse tab only)
+  const filteredRepos = searchQuery.trim()
+    ? repos.filter(r =>
+        r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (r.description || '').toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : repos
+  const totalPages = Math.max(1, Math.ceil(filteredRepos.length / PAGE_SIZE))
+  const startIdx   = (currentPage - 1) * PAGE_SIZE
+  const pageRepos  = filteredRepos.slice(startIdx, startIdx + PAGE_SIZE)
 
   return (
-    <>
-      {/* Top bar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-        <h1 style={{ margin: 0, fontSize: '22px' }}>Repo2Reputation</h1>
-        <button onClick={onLogout} style={btn({ backgroundColor: '#6b7280' })}>Logout</button>
-      </div>
+    <div className="min-h-screen bg-gray-50 p-4">
 
-      {/* GitHub connection panel */}
-      <div style={{ marginBottom: '24px', padding: '16px', border: '1px solid #e5e7eb', borderRadius: '8px', backgroundColor: '#f9fafb' }}>
-        {user?.github_username ? (
-          <p style={{ margin: 0, color: '#16a34a', fontWeight: 'bold', fontSize: '15px' }}>
-            ✓ Connected: @{user.github_username}
-          </p>
-        ) : (
-          <>
-            <p style={{ margin: '0 0 10px', fontWeight: 'bold' }}>Connect your GitHub account</p>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <input
-                placeholder="Your GitHub username (e.g. torvalds)"
-                value={githubInput}
-                onChange={e => setGithubInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleConnect()}
-                disabled={connectLoading}
-                style={{ flex: 1, padding: '8px 12px', borderRadius: '6px', border: '1px solid #ccc', fontSize: '14px' }}
-              />
-              <button
-                onClick={handleConnect}
-                disabled={connectLoading || !githubInput.trim()}
-                style={btn({ opacity: connectLoading || !githubInput.trim() ? 0.5 : 1 })}
-              >
-                {connectLoading ? 'Connecting…' : 'Connect'}
-              </button>
+      {/* NAVBAR */}
+      <div className="flex items-center justify-between px-6 py-3 bg-white border border-gray-200 rounded-3xl shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-lg shadow-md">
+            R
+          </div>
+          <h1 className="text-xl font-bold tracking-tight">
+            <span className="text-gray-900">Repo2</span>
+            <span className="text-indigo-600">Reputation</span>
+          </h1>
+        </div>
+        <div className="flex items-center gap-3">
+          {githubUsername ? (
+            <div className="px-5 py-2 rounded-full border border-gray-200 bg-white shadow-sm text-green-600 font-semibold text-sm">
+              ✓ Connected: @{githubUsername}
             </div>
-            {connectError && <p style={{ color: 'red', margin: '8px 0 0', fontSize: '14px' }}>{connectError}</p>}
-          </>
-        )}
+          ) : (
+            <div className="px-5 py-2 rounded-full border border-gray-200 bg-white shadow-sm text-amber-500 font-semibold text-sm">
+              ⚠ GitHub not connected
+            </div>
+          )}
+          <button
+            onClick={onLogout}
+            className="px-5 py-2 rounded-full border border-gray-200 bg-white hover:bg-gray-50 transition font-semibold text-sm"
+          >
+            Logout
+          </button>
+        </div>
       </div>
 
-      {/* Tabs — only shown after GitHub connected */}
-      {user?.github_username && (
-        <>
-          <div style={{ display: 'flex', gap: '4px', borderBottom: '2px solid #e5e7eb', marginBottom: '20px' }}>
+      {/* HERO */}
+      <div className="mt-3 rounded-2xl border border-gray-200 bg-white px-8 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
+
+          <div className="lg:col-span-1 flex items-start gap-3">
+            <div className="w-9 h-9 rounded-full border-2 border-indigo-500 flex items-center justify-center text-indigo-500 text-lg flex-shrink-0 mt-1">
+              ☆
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold leading-snug text-gray-900">
+                              Turn your GitHub work into a reputation that speaks for you.
+              </h2>
+              <p className="text-sm text-slate-500 mt-2 leading-relaxed">
+                We analyze your repositories and highlight your skills, impact, and expertise.
+              </p>
+            </div>
+          </div>
+
+          <div className="lg:col-span-2 flex flex-col sm:flex-row gap-6">
             {[
-              { key: 'browse',   label: 'Browse GitHub Repos' },
-              { key: 'imported', label: `Imported Repos${importedRepos.length > 0 ? ` (${importedRepos.length})` : ''}` },
-            ].map(tab => (
-              <button
-                key={tab.key}
-                onClick={() => { setActiveTab(tab.key); if (tab.key === 'imported') loadImported() }}
-                style={{
-                  padding: '8px 20px',
-                  border: 'none',
-                  borderBottom: activeTab === tab.key ? '3px solid #4f46e5' : '3px solid transparent',
-                  backgroundColor: 'transparent',
-                  fontWeight: activeTab === tab.key ? 'bold' : 'normal',
-                  color: activeTab === tab.key ? '#4f46e5' : '#6b7280',
-                  cursor: 'pointer',
-                  marginBottom: '-2px',
-                  fontSize: '14px',
-                }}
-              >
-                {tab.label}
-              </button>
+              { icon: '✦', title: 'AI-Powered Analysis',  desc: 'Deep code & documentation understanding' },
+              { icon: '◈', title: 'Skill Extraction',     desc: 'Identify technologies, patterns & strengths' },
+              { icon: '▤', title: 'Portfolio Ready',      desc: 'Beautiful reports to showcase your work' },
+            ].map(f => (
+              <div key={f.title} className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-400 text-lg flex-shrink-0">
+                  {f.icon}
+                </div>
+                <div>
+                  <p className="font-bold text-gray-900 text-sm">{f.title}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">{f.desc}</p>
+                </div>
+              </div>
             ))}
           </div>
 
-          {/* Browse tab */}
+        </div>
+      </div>
+
+      {/* REPO SECTION */}
+      <div className="mt-4 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+
+        {/* Tabs + Import button */}
+        <div className="flex items-center justify-between mb-5 border-b border-gray-100 pb-4">
+          <div className="flex items-center gap-6">
+            <button
+              onClick={() => handleTabSwitch('browse')}
+              className={`font-semibold text-sm pb-3 -mb-4 transition ${
+                activeTab === 'browse'
+                  ? 'text-indigo-600 border-b-2 border-indigo-600'
+                  : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              Browse GitHub Repos
+            </button>
+            <button
+              onClick={() => handleTabSwitch('imported')}
+              className={`font-semibold text-sm pb-3 -mb-4 transition ${
+                activeTab === 'imported'
+                  ? 'text-indigo-600 border-b-2 border-indigo-600'
+                  : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              Imported Repos ({importedCount})
+            </button>
+            <button
+              onClick={() => handleTabSwitch('portfolio')}
+              className={`font-semibold text-sm pb-3 -mb-4 transition ${
+                activeTab === 'portfolio'
+                  ? 'text-indigo-600 border-b-2 border-indigo-600'
+                  : 'text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              My Portfolio
+            </button>
+          </div>
+
           {activeTab === 'browse' && (
-            <>
-              {reposLoading && <p style={{ color: '#6b7280' }}>Loading repositories…</p>}
-              {reposError  && <p style={{ color: 'red' }}>{reposError}</p>}
+            <button
+              onClick={handleImport}
+              disabled={importing}
+              className="px-5 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm transition bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60"
+            >
+              {importing ? 'Importing…' : `Import Selected (${selected.size})`}
+            </button>
+          )}
+        </div>
 
-              {!reposLoading && sortedRepos.length > 0 && (
-                <>
-                  {/* Action bar */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                    <span style={{ color: '#6b7280', fontSize: '14px' }}>
-                      {sortedRepos.length} repos — check boxes to select, then import
-                    </span>
-                    <button
-                      onClick={handleImport}
-                      disabled={selected.size === 0 || importLoading}
-                      style={btn({ opacity: selected.size === 0 ? 0.4 : 1 })}
+        {/* ── Browse tab ─────────────────────────────────────────────────────── */}
+        {activeTab === 'browse' && (
+          <>
+            {/* Connect GitHub or filter repos */}
+            {!githubUsername ? (
+              <form onSubmit={handleConnectGitHub} className="mb-5">
+                <p className="text-sm text-gray-500 mb-2 font-medium">Enter your GitHub username to load your repositories</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="e.g. octocat"
+                    value={githubInput}
+                    onChange={e => { setGithubInput(e.target.value); setConnectError(null) }}
+                    className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  />
+                  <button
+                    type="submit"
+                    disabled={connecting}
+                    className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm transition"
+                  >
+                    {connecting ? 'Connecting…' : 'Search'}
+                  </button>
+                </div>
+                {connectError && (
+                  <p className="mt-2 text-sm text-red-500">{connectError}</p>
+                )}
+              </form>
+            ) : (
+              <div className="flex items-center gap-3 mb-4">
+                <input
+                  type="text"
+                  placeholder="Search repositories…"
+                  value={searchQuery}
+                  onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1) }}
+                  className="flex-1 px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                />
+                {repos.length > 0 && (
+                  <p className="text-sm text-gray-400 whitespace-nowrap">
+                    {filteredRepos.length} of {repos.length} repos
+                  </p>
+                )}
+              </div>
+            )}
+
+            {importSuccess && (
+              <div className="flex items-center justify-between mb-4 px-4 py-3 rounded-xl border border-green-200 bg-green-50 text-green-700 text-sm font-medium">
+                <span>✓ Import complete — {importSuccess}</span>
+                <button onClick={() => setImportSuccess(null)} className="text-green-500 hover:text-green-700 text-lg leading-none ml-4">×</button>
+              </div>
+            )}
+            {importError && (
+              <div className="flex items-center justify-between mb-4 px-4 py-3 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm font-medium">
+                <span>✗ {importError}</span>
+                <button onClick={() => setImportError(null)} className="text-red-400 hover:text-red-600 text-lg leading-none ml-4">×</button>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              {loading ? (
+                <p className="text-gray-400 text-sm py-4">Loading repositories…</p>
+              ) : filteredRepos.length === 0 ? (
+                <p className="text-gray-400 text-sm py-4">
+                  {repos.length === 0
+                    ? 'No repositories found for this GitHub account.'
+                    : `No repositories match "${searchQuery}".`}
+                </p>
+              ) : (
+                pageRepos.map((repo) => {
+                  const isChecked = selected.has(repo.fullName)
+                  const updated   = formatDate(repo.repoUpdatedAt)
+                  const topics    = repo.topics || []
+
+                  return (
+                    <div
+                      key={repo.fullName}
+                      className="flex items-center justify-between p-4 rounded-xl border border-gray-200 bg-white hover:shadow-sm transition cursor-pointer"
+                      onClick={() => toggleSelect(repo.fullName)}
                     >
-                      {importLoading ? 'Importing…' : `Import Selected (${selected.size})`}
-                    </button>
-                  </div>
+                      <div className="flex items-center gap-4 flex-1 min-w-0">
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleSelect(repo.fullName)}
+                          onClick={e => e.stopPropagation()}
+                          className="w-4 h-4 accent-indigo-600 flex-shrink-0"
+                        />
+                        <div
+                          className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden"
+                          style={{
+                            backgroundColor: langIcon(repo.language) ? '#f8fafc' : langColor(repo.language),
+                            border: langIcon(repo.language) ? '1px solid #e5e7eb' : 'none',
+                            padding: langIcon(repo.language) ? '10px' : '0',
+                          }}
+                        >
+                          {langIcon(repo.language)
+                            ? <img src={langIcon(repo.language)} alt={repo.language} className="w-full h-full object-contain" />
+                            : <span className="text-white text-xs font-bold">{(repo.language || '?').slice(0, 2).toUpperCase()}</span>
+                          }
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-bold text-gray-900 text-sm">{repo.name}</p>
+                          {repo.description && (
+                            <p className="text-xs text-gray-500 mt-0.5 truncate max-w-lg">{repo.description}</p>
+                          )}
+                          {topics.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mt-2">
+                              {topics.map(tag => (
+                                <span key={tag} className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs border border-gray-200">
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          <div className="flex items-center gap-4 mt-2">
+                            <span className="flex items-center gap-1.5 text-xs text-gray-600">
+                              <span className="w-2.5 h-2.5 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: langColor(repo.language) }} />
+                              {repo.language || 'Unknown'}
+                            </span>
+                            <span className="text-xs text-gray-400">☆ {repo.starsCount || 0}</span>
+                            {updated && <span className="text-xs text-gray-400">Updated: {updated}</span>}
+                          </div>
+                        </div>
+                      </div>
 
-                  {/* Import result banner */}
-                  {importResults && (
-                    <div style={{ marginBottom: '14px', padding: '10px 14px', backgroundColor: '#f0fdf4', border: '1px solid #86efac', borderRadius: '6px', fontSize: '14px' }}>
-                      ✓ Import complete — {importResults.results.filter(r => r.status === 'succeeded').length} succeeded
-                      {importResults.results.filter(r => r.status === 'failed').length > 0 && (
-                        <>, {importResults.results.filter(r => r.status === 'failed').length} failed</>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Repo list with checkboxes */}
-                  {sortedRepos.map((repo, index) => (
-                    <div key={repo.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '10px' }}>
-                      <input
-                        type="checkbox"
-                        checked={selected.has(repo.fullName)}
-                        onChange={() => toggleSelect(repo.fullName)}
-                        style={{ marginTop: '14px', cursor: 'pointer', width: '16px', height: '16px', flexShrink: 0 }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <RepoCard repo={repo} isTop={index === 0} />
+                      <div className="flex gap-6 ml-6 flex-shrink-0 text-center">
+                        <div>
+                          <p className="text-gray-400 text-sm">☆</p>
+                          <p className="text-sm font-semibold text-gray-700">{repo.starsCount || 0}</p>
+                          <p className="text-xs text-gray-400">Stars</p>
+                        </div>
+                        <div>
+                          <p className="text-gray-400 text-sm">⑂</p>
+                          <p className="text-sm font-semibold text-gray-700">{repo.forksCount || 0}</p>
+                          <p className="text-xs text-gray-400">Forks</p>
+                        </div>
                       </div>
                     </div>
+                  )
+                })
+              )}
+            </div>
+
+            {/* Pagination */}
+            {!loading && filteredRepos.length > PAGE_SIZE && (
+              <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
+                <p className="text-sm text-gray-500">
+                  {startIdx + 1}–{Math.min(startIdx + PAGE_SIZE, filteredRepos.length)} of {filteredRepos.length} repositories
+                </p>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition text-sm"
+                  >
+                    ‹
+                  </button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                    <button
+                      key={page}
+                      onClick={() => setCurrentPage(page)}
+                      className={`w-8 h-8 rounded-lg border flex items-center justify-center text-sm font-medium transition ${
+                        page === currentPage
+                          ? 'bg-indigo-600 border-indigo-600 text-white'
+                          : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      {page}
+                    </button>
                   ))}
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition text-sm"
+                  >
+                    ›
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
 
-                  {/* Pagination */}
-                  <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                    {reposPage > 1 && (
-                      <button onClick={() => loadRepos(reposPage - 1)} style={btn({ backgroundColor: '#6b7280' })}>
-                        ← Previous
-                      </button>
-                    )}
-                    {sortedRepos.length === 30 && (
-                      <button onClick={() => loadRepos(reposPage + 1)} style={btn()}>
-                        Next →
-                      </button>
-                    )}
-                  </div>
-                </>
-              )}
+        {/* ── Imported Repos tab ─────────────────────────────────────────────── */}
+        {activeTab === 'imported' && (
+          <AnalysisPanel importedRepos={importedRepos} onLogout={onLogout} />
+        )}
 
-              {!reposLoading && sortedRepos.length === 0 && !reposError && (
-                <p style={{ color: '#6b7280' }}>No public repositories found for @{user.github_username}.</p>
-              )}
-            </>
-          )}
+        {/* ── Portfolio tab ──────────────────────────────────────────────────── */}
+        {activeTab === 'portfolio' && (
+          <PortfolioBuilder onLogout={onLogout} />
+        )}
 
-          {/* Imported + Analysis tab */}
-          {activeTab === 'imported' && (
-            <>
-              {importedLoading
-                ? <p style={{ color: '#6b7280' }}>Loading…</p>
-                : <AnalysisPanel importedRepos={importedRepos} onLogout={onLogout} />
-              }
-            </>
-          )}
-        </>
-      )}
-    </>
+      </div>
+    </div>
   )
 }
 

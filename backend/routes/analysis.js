@@ -29,10 +29,22 @@ async function processAnalyses(analysisIds) {
 
       const analysis = await analyzeRepository(repo);
 
-      const skills   = analysis.skills   || [];
-      const domains  = analysis.domains  || [];
-      const summary  = analysis.summary  || '';
-      const confidence = parseFloat(analysis.overall_confidence) || 0;
+      const technologies     = analysis.technologies     || [];
+      const keyTakeaways     = analysis.key_takeaways    || [];
+      const summary          = analysis.summary          || '';
+      const whatItDoes       = analysis.what_it_does     || '';
+      const highlights       = analysis.highlights       || {};
+      const confidenceLabel  = analysis.confidence_label || 'Medium';
+      const confidence       = parseFloat(analysis.overall_confidence) || 0;
+
+      // skills_json stores technologies array; summary_json stores the full rich payload
+      const summaryJson = {
+        text:             summary,
+        key_takeaways:    keyTakeaways,
+        what_it_does:     whatItDoes,
+        highlights,
+        confidence_label: confidenceLabel,
+      };
 
       await pool.query(
         `UPDATE analyses SET
@@ -46,23 +58,23 @@ async function processAnalyses(analysisIds) {
          WHERE id = $5`,
         [
           confidence,
-          JSON.stringify(skills),
-          JSON.stringify(domains),
-          JSON.stringify({ text: summary }),
+          JSON.stringify(technologies),
+          JSON.stringify([]),
+          JSON.stringify(summaryJson),
           analysisId,
         ]
       );
 
-      // Store evidence refs for each skill claim
-      for (const skill of skills) {
+      // Store evidence refs for each technology claim
+      for (const tech of technologies) {
         await pool.query(
           `INSERT INTO evidence_refs (analysis_id, claim_type, claim_key, source_path, confidence, created_at)
            VALUES ($1, 'skill', $2, $3, $4, NOW())`,
-          [analysisId, skill.name, skill.evidence || 'Repository metadata', skill.confidence]
+          [analysisId, tech.name, tech.evidence || 'Repository metadata', tech.confidence]
         );
       }
 
-      console.log(`[analysis] completed ${analysisId} — ${skills.length} skills found`);
+      console.log(`[analysis] completed ${analysisId} — ${technologies.length} technologies found`);
     } catch (err) {
       console.error(`[analysis] failed ${analysisId}:`, err.message);
       await pool.query(
@@ -172,9 +184,12 @@ router.get('/repo/:repositoryId', authMiddleware, async (req, res) => {
         analysisId:      a.id,
         status:          a.status,
         confidenceScore: a.confidence_score,
-        skills:          a.skills_json,
-        domains:         a.domains_json,
+        technologies:    a.skills_json,
         summary:         a.summary_json?.text,
+        keyTakeaways:    a.summary_json?.key_takeaways,
+        whatItDoes:      a.summary_json?.what_it_does,
+        highlights:      a.summary_json?.highlights,
+        confidenceLabel: a.summary_json?.confidence_label,
         modelVersion:    a.model_version,
         createdAt:       a.created_at,
         completedAt:     a.completed_at,
@@ -219,9 +234,12 @@ router.get('/:analysisId', authMiddleware, async (req, res) => {
         repoName:        a.repo_name,
         status:          a.status,
         confidenceScore: a.confidence_score,
-        skills:          a.skills_json,
-        domains:         a.domains_json,
+        technologies:    a.skills_json,
         summary:         a.summary_json?.text,
+        keyTakeaways:    a.summary_json?.key_takeaways,
+        whatItDoes:      a.summary_json?.what_it_does,
+        highlights:      a.summary_json?.highlights,
+        confidenceLabel: a.summary_json?.confidence_label,
         modelVersion:    a.model_version,
         createdAt:       a.created_at,
         completedAt:     a.completed_at,
