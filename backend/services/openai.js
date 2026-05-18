@@ -130,4 +130,64 @@ async function generatePortfolioNarrative(analyses) {
   return JSON.parse(raw);
 }
 
-module.exports = { analyzeRepository, generatePortfolioNarrative };
+const README_SYSTEM_PROMPT = `You are a technical writer creating a professional README.md for a GitHub repository.
+
+Rules:
+- Base every claim strictly on the provided analysis data — do not invent features, libraries, or usage steps
+- Write in clear, developer-friendly markdown
+- If installation or usage details are not in the analysis, write a sensible placeholder with a comment like "<!-- update with actual steps -->"
+- Do not add badges, shields.io links, or license sections unless explicitly in the data
+- Output raw markdown only — no code fences wrapping the whole document
+
+Structure the README with these sections in order:
+# <repo name>
+## Overview
+## Features
+## Tech Stack
+## Getting Started
+### Prerequisites
+### Installation
+## Usage
+## Contributing`;
+
+function buildReadmeUserPrompt(repo, analysis) {
+  const techs = (analysis.technologies || [])
+    .map(t => `  - ${t.name} (${t.category}, confidence: ${Math.round(t.confidence * 100)}%)`)
+    .join('\n');
+
+  const takeaways = (analysis.key_takeaways || [])
+    .map(t => `  - [${t.status}] ${t.text}`)
+    .join('\n');
+
+  return `Repository name: ${repo.name}
+Primary language: ${repo.primary_language || 'Unknown'}
+Topics/tags: ${Array.isArray(repo.topics) ? repo.topics.join(', ') : (repo.topics || 'None')}
+
+What it does: ${analysis.what_it_does || 'Not specified'}
+Summary: ${analysis.summary || 'Not specified'}
+Purpose: ${analysis.highlights?.purpose || 'Not specified'}
+Strengths: ${analysis.highlights?.strengths || 'Not specified'}
+Use cases: ${analysis.highlights?.use_cases || 'Not specified'}
+
+Technologies detected:
+${techs || '  - None detected'}
+
+Key takeaways:
+${takeaways || '  - None'}`;
+}
+
+async function generateReadme(repo, analysis) {
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    messages: [
+      { role: 'system', content: README_SYSTEM_PROMPT },
+      { role: 'user',   content: buildReadmeUserPrompt(repo, analysis) },
+    ],
+    temperature: 0.4,
+    max_tokens: 1500,
+  });
+
+  return response.choices[0].message.content.trim();
+}
+
+module.exports = { analyzeRepository, generatePortfolioNarrative, generateReadme };

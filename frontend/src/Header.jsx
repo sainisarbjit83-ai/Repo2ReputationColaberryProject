@@ -377,7 +377,7 @@ function Header({ onLogout }) {
                   return (
                     <div
                       key={repo.fullName}
-                      className="flex items-center justify-between p-4 rounded-xl border border-gray-200 bg-white hover:shadow-sm transition cursor-pointer"
+                      className="group flex items-center justify-between p-4 rounded-xl border border-gray-200 bg-white hover:shadow-sm transition cursor-pointer"
                       onClick={() => toggleSelect(repo.fullName)}
                     >
                       <div className="flex items-center gap-4 flex-1 min-w-0">
@@ -426,17 +426,26 @@ function Header({ onLogout }) {
                         </div>
                       </div>
 
-                      <div className="flex gap-6 ml-6 flex-shrink-0 text-center">
-                        <div>
+                      <div className="flex items-center gap-6 ml-6 flex-shrink-0">
+                        <div className="text-center">
                           <p className="text-gray-400 text-sm">☆</p>
                           <p className="text-sm font-semibold text-gray-700">{repo.starsCount || 0}</p>
                           <p className="text-xs text-gray-400">Stars</p>
                         </div>
-                        <div>
+                        <div className="text-center">
                           <p className="text-gray-400 text-sm">⑂</p>
                           <p className="text-sm font-semibold text-gray-700">{repo.forksCount || 0}</p>
                           <p className="text-xs text-gray-400">Forks</p>
                         </div>
+                        <a
+                          href={`https://github.com/${repo.fullName}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50 bg-white"
+                        >
+                          ↗ GitHub
+                        </a>
                       </div>
                     </div>
                   )

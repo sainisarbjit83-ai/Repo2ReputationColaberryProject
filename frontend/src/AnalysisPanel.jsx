@@ -71,11 +71,45 @@ function SectionCard({ icon, title, children }) {
 
 // ── AnalysisDetail ────────────────────────────────────────────────────────────
 
-function AnalysisDetail({ repo, analysis, onBack }) {
+function AnalysisDetail({ repo, analysis, onBack, onLogout }) {
   const lang      = repo.primary_language || repo.language
   const stars     = (repo.stars_count ?? repo.stargazers_count ?? 0).toLocaleString()
   const forks     = repo.forks_count ?? 0
   const analyzedAt = formatAnalyzedDate(analysis.completedAt || analysis.updatedAt)
+
+  const [readmeLoading, setReadmeLoading] = useState(false)
+  const [readmeContent, setReadmeContent] = useState(null)
+  const [readmeError, setReadmeError]     = useState(null)
+  const [readmeCopied, setReadmeCopied]   = useState(false)
+
+  async function handleGenerateReadme() {
+    setReadmeLoading(true)
+    setReadmeError(null)
+    setReadmeContent(null)
+    try {
+      const res = await authFetch(
+        `${BASE_URL}/api/repos/${repo.id}/generate-readme`,
+        { method: 'POST' },
+        onLogout
+      )
+      const json = await res?.json()
+      if (json?.success) {
+        setReadmeContent(json.data.readme)
+      } else {
+        setReadmeError(json?.error?.message || 'Failed to generate README.')
+      }
+    } catch {
+      setReadmeError('Network error — is the backend running?')
+    }
+    setReadmeLoading(false)
+  }
+
+  function handleCopyReadme() {
+    navigator.clipboard.writeText(readmeContent).then(() => {
+      setReadmeCopied(true)
+      setTimeout(() => setReadmeCopied(false), 2000)
+    })
+  }
 
   const HIGHLIGHT_META = [
     { key: 'purpose',             label: 'Purpose',             icon: '🎯' },
@@ -225,7 +259,7 @@ function AnalysisDetail({ repo, analysis, onBack }) {
       </div>
 
       {/* Overall Confidence */}
-      <div style={{ border: '1px solid #e5e7eb', borderRadius: '12px', padding: '28px 20px', backgroundColor: 'white', textAlign: 'center' }}>
+      <div style={{ border: '1px solid #e5e7eb', borderRadius: '12px', padding: '28px 20px', backgroundColor: 'white', textAlign: 'center', marginBottom: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', marginBottom: '8px', color: '#6366f1', fontSize: '15px', fontWeight: 'bold' }}>
           <span>🛡</span> Overall Confidence
         </div>
@@ -235,6 +269,67 @@ function AnalysisDetail({ repo, analysis, onBack }) {
         <p style={{ margin: 0, fontSize: '13px', color: '#9ca3af' }}>
           This analysis is based on repository content, documentation, and metadata.
         </p>
+      </div>
+
+      {/* Generate README */}
+      <div style={{ border: '1px solid #e5e7eb', borderRadius: '12px', padding: '20px', backgroundColor: 'white' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: readmeContent ? '16px' : 0 }}>
+          <div>
+            <p style={{ margin: '0 0 4px', fontWeight: 'bold', fontSize: '15px', color: '#111827' }}>Generate README</p>
+            <p style={{ margin: 0, fontSize: '13px', color: '#6b7280' }}>
+              AI writes a README.md based on this analysis. Copy it and commit it to your repo.
+            </p>
+          </div>
+          <button
+            onClick={handleGenerateReadme}
+            disabled={readmeLoading}
+            style={{
+              flexShrink: 0, marginLeft: '16px',
+              padding: '9px 20px', borderRadius: '8px', border: 'none',
+              backgroundColor: readmeLoading ? '#a5b4fc' : '#4f46e5',
+              color: 'white', fontWeight: 'bold', fontSize: '13px',
+              cursor: readmeLoading ? 'not-allowed' : 'pointer',
+              transition: 'background-color 0.15s',
+            }}
+          >
+            {readmeLoading ? 'Generating…' : readmeContent ? 'Regenerate' : 'Generate README'}
+          </button>
+        </div>
+
+        {readmeError && (
+          <p style={{ margin: '12px 0 0', fontSize: '13px', color: '#dc2626' }}>{readmeError}</p>
+        )}
+
+        {readmeContent && (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600' }}>README.md preview</span>
+              <button
+                onClick={handleCopyReadme}
+                style={{
+                  padding: '5px 14px', borderRadius: '6px', border: '1px solid #e5e7eb',
+                  backgroundColor: readmeCopied ? '#dcfce7' : '#f9fafb',
+                  color: readmeCopied ? '#166534' : '#374151',
+                  fontSize: '12px', fontWeight: '600', cursor: 'pointer', transition: 'all 0.15s',
+                }}
+              >
+                {readmeCopied ? '✓ Copied' : 'Copy'}
+              </button>
+            </div>
+            <pre style={{
+              margin: 0, padding: '16px', borderRadius: '8px',
+              backgroundColor: '#0f172a', color: '#e2e8f0',
+              fontSize: '12px', lineHeight: '1.7', fontFamily: "'Fira Code', 'Cascadia Code', monospace",
+              overflowX: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              maxHeight: '420px', overflowY: 'auto',
+            }}>
+              {readmeContent}
+            </pre>
+            <p style={{ margin: '10px 0 0', fontSize: '12px', color: '#9ca3af' }}>
+              Commit this as <code style={{ backgroundColor: '#f3f4f6', padding: '1px 5px', borderRadius: '4px' }}>README.md</code> to your repo — your next analysis will have higher confidence.
+            </p>
+          </div>
+        )}
       </div>
 
     </div>
@@ -320,7 +415,7 @@ function AnalysisPanel({ importedRepos, onLogout }) {
 
   if (detailRepo) {
     const analysis = analysisMap[detailRepo.id]
-    return <AnalysisDetail repo={detailRepo} analysis={analysis} onBack={() => setDetailRepo(null)} />
+    return <AnalysisDetail repo={detailRepo} analysis={analysis} onBack={() => setDetailRepo(null)} onLogout={onLogout} />
   }
 
   const notYetAnalyzed = importedRepos.filter(r => {

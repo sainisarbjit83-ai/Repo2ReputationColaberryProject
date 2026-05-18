@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(git commit -m ' *)",
+      "Bash(Get-ChildItem -Path \".\" -File -Filter \"*.md\")",
+      "Bash(Select-Object -Property FullName)"
     ]
   }
 }

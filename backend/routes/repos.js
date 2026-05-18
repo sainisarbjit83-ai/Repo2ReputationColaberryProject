@@ -2,6 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const pool = require('../db/postgres');
 const authMiddleware = require('../middleware/authMiddleware');
+const { generateReadme } = require('../services/openai');
 
 const router = express.Router();
 
@@ -298,6 +299,57 @@ router.get('/import/:jobId', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('[repos] job status error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to fetch job status.' } });
+  }
+});
+
+// POST /api/repos/:repositoryId/generate-readme — generate a README draft from analysis data
+router.post('/:repositoryId/generate-readme', authMiddleware, async (req, res) => {
+  const { id: userId } = req.user;
+  const { repositoryId } = req.params;
+
+  try {
+    const repoResult = await pool.query(
+      `SELECT id, name, full_name, description, primary_language, topics
+       FROM repositories WHERE id = $1 AND user_id = $2`,
+      [repositoryId, userId]
+    );
+
+    if (!repoResult.rows[0]) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Repository not found.' } });
+    }
+
+    const repo = repoResult.rows[0];
+
+    const analysisResult = await pool.query(
+      `SELECT skills_json, summary_json, confidence_score
+       FROM analyses
+       WHERE repository_id = $1 AND status = 'completed'
+       ORDER BY created_at DESC LIMIT 1`,
+      [repositoryId]
+    );
+
+    if (!analysisResult.rows[0]) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'NO_ANALYSIS', message: 'Run an analysis on this repository before generating a README.' },
+      });
+    }
+
+    const row = analysisResult.rows[0];
+    const analysis = {
+      technologies:  row.skills_json   || [],
+      summary:       row.summary_json?.text,
+      what_it_does:  row.summary_json?.what_it_does,
+      highlights:    row.summary_json?.highlights,
+      key_takeaways: row.summary_json?.key_takeaways || [],
+    };
+
+    const readme = await generateReadme(repo, analysis);
+
+    return res.status(200).json({ success: true, data: { readme } });
+  } catch (err) {
+    console.error('[repos] generate-readme error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to generate README.' } });
   }
 });
 
