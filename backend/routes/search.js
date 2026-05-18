@@ -77,23 +77,19 @@ router.get('/portfolios', async (req, res) => {
       ),
     ]);
 
-    // For each portfolio, pull top skills from latest analyses
+    // For each portfolio, pull top skills and languages from their repo analyses
     const portfolioIds = portfoliosResult.rows.map(p => p.id);
     let skillsMap = {};
 
     if (portfolioIds.length > 0) {
       const skillsResult = await pool.query(
         `SELECT
-           r.id AS repo_id,
+           p2.id AS portfolio_id,
            r.primary_language,
-           a.skills_json,
-           (SELECT jsonb_array_elements_text(p2.content_json->'repository_ids')::uuid) AS portfolio_repo_id,
-           p2.id AS portfolio_id
+           a.skills_json
          FROM portfolios p2
-         JOIN LATERAL (
-           SELECT jsonb_array_elements_text(p2.content_json->'repository_ids')::uuid AS rid
-         ) repo_ids ON true
-         JOIN repositories r ON r.id = repo_ids.rid
+         CROSS JOIN LATERAL jsonb_array_elements_text(p2.content_json->'repository_ids') AS rid_text
+         JOIN repositories r ON r.id = rid_text::uuid
          LEFT JOIN LATERAL (
            SELECT skills_json FROM analyses
            WHERE repository_id = r.id AND status = 'completed'
