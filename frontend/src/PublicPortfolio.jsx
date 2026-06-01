@@ -1,6 +1,20 @@
 import { useState, useEffect, useRef } from 'react'
 import { BASE_URL } from './api'
 
+async function downloadPdf(slug) {
+  const res = await fetch(`${BASE_URL}/api/portfolios/public/${slug}/pdf`)
+  if (!res.ok) throw new Error('PDF generation failed')
+  const blob = await res.blob()
+  const url  = URL.createObjectURL(blob)
+  const a    = document.createElement('a')
+  a.href     = url
+  a.download = `${slug}-resume.pdf`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 // ─── Tokens ───────────────────────────────────────────────────────────────────
 const A = '#4361ee'          // accent blue
 const AL = '#eef2ff'         // accent light
@@ -41,43 +55,43 @@ function groupByCategory(skills) {
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-function Sidebar({ title, headline, narrative, topSkills, githubUsername }) {
-  const grouped  = groupByCategory(topSkills)
-  const initials = (title || 'D').split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
-
-  const insights = (narrative || '')
-    .split('.')
-    .map(s => s.trim())
-    .filter(s => s.length > 30)
-    .slice(0, 3)
-    .map(s => s + '.')
+function Sidebar({ title, headline, topSkills, githubUsername, profile, engineeringStrengths, repoCount }) {
+  const grouped     = groupByCategory(topSkills)
+  const displayName = profile?.fullName || title || 'Developer'
+  const displayHead = profile?.headline || headline
+  const initials    = displayName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
 
   return (
     <aside style={{
-      width: '230px', flexShrink: 0,
+      width: '240px', flexShrink: 0,
       backgroundColor: BG,
       borderRight: `1px solid ${BD}`,
-      padding: '18px 14px',
-      display: 'flex', flexDirection: 'column', gap: '18px',
+      padding: '20px 16px',
+      display: 'flex', flexDirection: 'column', gap: '20px',
       overflowY: 'auto',
     }}>
       {/* Avatar + identity */}
       <div style={{ textAlign: 'center' }}>
         <div style={{
-          width: '84px', height: '84px', borderRadius: '50%',
+          width: '88px', height: '88px', borderRadius: '50%',
           background: 'linear-gradient(135deg,#4361ee,#7c3aed)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: '#fff', fontWeight: '800', fontSize: '26px',
+          color: '#fff', fontWeight: '800', fontSize: '28px',
           margin: '0 auto 14px',
           boxShadow: '0 4px 18px rgba(67,97,238,0.28)',
-        }}>{initials}</div>
+          overflow: 'hidden',
+        }}>
+          {profile?.photoUrl
+            ? <img src={profile.photoUrl} alt="avatar" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none' }} />
+            : initials}
+        </div>
 
         <h2 style={{ margin: '0 0 5px', fontSize: '19px', fontWeight: '800', color: T, lineHeight: 1.2 }}>
-          {title}
+          {displayName}
         </h2>
-        {headline && (
+        {displayHead && (
           <p style={{ margin: '0 0 10px', fontSize: '12px', color: A, fontWeight: '600', lineHeight: 1.5 }}>
-            {headline}
+            {displayHead}
           </p>
         )}
         <span style={{
@@ -86,27 +100,61 @@ function Sidebar({ title, headline, narrative, topSkills, githubUsername }) {
           backgroundColor: '#dcfce7', fontSize: '11px', fontWeight: '600', color: '#166534',
         }}>
           <span style={{ width: '5px', height: '5px', borderRadius: '50%', backgroundColor: '#16a34a', display: 'inline-block' }} />
-          Available for opportunities
+          Open to opportunities
         </span>
       </div>
 
-      {/* GitHub link */}
-      {githubUsername && (
+      {/* Contact */}
+      {(profile?.location || profile?.email || profile?.githubUrl || profile?.linkedinUrl || profile?.website || githubUsername) && (
         <div>
           <Label>Contact</Label>
-          <Row icon="🔗">
-            <a href={`https://github.com/${githubUsername}`} target="_blank" rel="noreferrer"
-              style={{ color: A, fontSize: '12px', textDecoration: 'none', fontWeight: '500' }}>
-              github.com/{githubUsername}
-            </a>
-          </Row>
+          {profile?.location   && <Row icon="📍">{profile.location}</Row>}
+          {profile?.email      && <Row icon="📧"><a href={`mailto:${profile.email}`} style={{ color: A, textDecoration: 'none', fontSize: '12px' }}>{profile.email}</a></Row>}
+          {(profile?.githubUrl || githubUsername) && (
+            <Row icon="🔗">
+              <a href={profile?.githubUrl || `https://github.com/${githubUsername}`} target="_blank" rel="noreferrer"
+                style={{ color: A, fontSize: '12px', textDecoration: 'none', fontWeight: '500' }}>
+                GitHub Profile
+              </a>
+            </Row>
+          )}
+          {profile?.linkedinUrl && (
+            <Row icon="🔗">
+              <a href={profile.linkedinUrl} target="_blank" rel="noreferrer"
+                style={{ color: A, fontSize: '12px', textDecoration: 'none', fontWeight: '500' }}>
+                LinkedIn
+              </a>
+            </Row>
+          )}
+          {profile?.website && (
+            <Row icon="🌐">
+              <a href={profile.website} target="_blank" rel="noreferrer"
+                style={{ color: A, fontSize: '12px', textDecoration: 'none', fontWeight: '500' }}>
+                Personal Site
+              </a>
+            </Row>
+          )}
         </div>
       )}
 
-      {/* Skills */}
+      {/* Engineering Strengths */}
+      {engineeringStrengths?.length > 0 && (
+        <div>
+          <Label>Engineering Strengths</Label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+            {engineeringStrengths.map((s, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: '#166534' }}>
+                <span style={{ fontWeight: '700', flexShrink: 0 }}>✓</span>{s}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Core Technologies grouped by category */}
       {Object.keys(grouped).length > 0 && (
         <div id="skills">
-          <Label>Skills</Label>
+          <Label>Core Technologies</Label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {Object.entries(grouped).map(([c, skills]) => {
               const s = cat(c)
@@ -128,18 +176,12 @@ function Sidebar({ title, headline, narrative, topSkills, githubUsername }) {
         </div>
       )}
 
-      {/* AI Insights */}
-      {insights.length > 0 && (
-        <div>
-          <Label icon="🤖">AI Insights</Label>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
-            {insights.map((ins, i) => (
-              <div key={i} style={{ display: 'flex', gap: '7px', alignItems: 'flex-start' }}>
-                <span style={{ color: '#16a34a', fontSize: '11px', marginTop: '2px', flexShrink: 0 }}>●</span>
-                <p style={{ margin: 0, fontSize: '11px', color: TS, lineHeight: 1.65 }}>{ins}</p>
-              </div>
-            ))}
-          </div>
+      {/* Analysis trust signal */}
+      {repoCount > 0 && (
+        <div style={{ padding: '8px 12px', backgroundColor: '#eef2ff', borderRadius: '8px', border: '1px solid #a5b4fc' }}>
+          <p style={{ margin: 0, fontSize: '10px', color: '#4338ca', fontWeight: '600', textAlign: 'center' }}>
+            🤖 Generated from AI analysis of {repoCount} {repoCount === 1 ? 'repository' : 'repositories'}
+          </p>
         </div>
       )}
     </aside>
@@ -170,7 +212,22 @@ function Row({ icon, children }) {
 // ─── Top Nav ──────────────────────────────────────────────────────────────────
 const TABS = ['Overview', 'Projects', 'Experience', 'Skills']
 
-function TopNav({ active, onTab }) {
+function TopNav({ active, onTab, slug }) {
+  const [downloading, setDownloading] = useState(false)
+
+  async function handleDownloadPdf() {
+    if (downloading || !slug) return
+    setDownloading(true)
+    try {
+      await downloadPdf(slug)
+    } catch (err) {
+      console.error('[pdf download]', err)
+      alert('Failed to generate PDF. Please try again.')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
   return (
     <nav style={{
       position: 'sticky', top: 0, zIndex: 50,
@@ -225,15 +282,20 @@ function TopNav({ active, onTab }) {
         })}
       </div>
 
-      {/* CTA */}
+      {/* PDF download CTA */}
       <button
-        onClick={() => window.print()}
+        onClick={handleDownloadPdf}
+        disabled={downloading}
         style={{
-          padding: '7px 14px', backgroundColor: A, color: '#fff',
+          padding: '7px 14px',
+          backgroundColor: downloading ? '#a5b4fc' : A,
+          color: '#fff',
           border: 'none', borderRadius: '7px', fontSize: '12px', fontWeight: '600',
-          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '5px',
+          cursor: downloading ? 'not-allowed' : 'pointer',
+          display: 'flex', alignItems: 'center', gap: '5px',
+          transition: 'background-color 0.15s',
         }}>
-        Download Resume ↓
+        {downloading ? 'Generating…' : 'Download Resume PDF ↓'}
       </button>
     </nav>
   )
@@ -591,11 +653,22 @@ export default function PublicPortfolio({ slug }) {
     </div>
   )
 
-  const { title, headline, narrative, topSkills = [], repos = [], projects = [], publishedAt } = portfolio
+  const {
+    title, headline, narrative, topSkills = [], repos = [], projects = [],
+    publishedAt, engineeringStrengths = [], careerSignals = [], profile = {},
+  } = portfolio
 
   // Derive GitHub username from any repo fullName (e.g. "username/reponame")
   const githubUsername = repos.find(r => r.fullName)?.fullName?.split('/')?.[0] || null
-  const yearsActive    = Math.max(1, new Date().getFullYear() - 2022)
+
+  // Rank repos: highest confidence first, then featured (top 2) first
+  const rankedRepos = [...repos].sort((a, b) =>
+    (b.analysis?.confidenceScore ?? 0) - (a.analysis?.confidenceScore ?? 0)
+  )
+
+  const aiRepoCount = repos.filter(r =>
+    (r.analysis?.technologies || []).some(t => ['OpenAI','LangChain','Anthropic','LlamaIndex'].includes(t.name))
+  ).length
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: BG, fontFamily: "'Inter', system-ui, sans-serif", color: T }}>
@@ -608,36 +681,38 @@ export default function PublicPortfolio({ slug }) {
         a:hover { opacity: 0.8; }
       `}</style>
 
-      <TopNav active={activeTab} onTab={setActiveTab} />
+      <TopNav active={activeTab} onTab={setActiveTab} slug={portfolio.slug} />
 
       <div style={{ display: 'flex', minHeight: 'calc(100vh - 48px)' }}>
 
         <Sidebar
           title={title}
           headline={headline}
-          narrative={narrative}
           topSkills={topSkills}
           githubUsername={githubUsername}
+          profile={profile}
+          engineeringStrengths={engineeringStrengths}
+          repoCount={repos.length}
         />
 
         {/* Main content */}
         <main id="main-content" ref={mainRef} style={{ flex: 1, padding: '20px 28px 32px', minWidth: 0, overflowY: 'auto' }}>
 
-          {/* ── Overview ───────────────────────────────────────────── */}
-          <Section id="overview" icon="👤" title="Professional Summary">
+          {/* ── About Me ───────────────────────────────────────────── */}
+          <Section id="overview" icon="👤" title="About Me">
             <SummaryText text={narrative || 'No summary available.'} />
 
-            {/* Stats row */}
+            {/* Portfolio Highlights row */}
             <div style={{
               display: 'flex',
               border: `1px solid ${BD}`, borderRadius: '10px',
-              overflow: 'hidden', backgroundColor: '#fff',
+              overflow: 'hidden', backgroundColor: '#fff', marginTop: '14px',
             }}>
               {[
-                { value: `${yearsActive}+`,      label: 'Years Active',  icon: '📅' },
-                { value: `${repos.length}`,       label: 'Repositories',  icon: '📁' },
-                { value: `${topSkills.length}+`,  label: 'Technologies',  icon: '⚙️' },
-                { value: `${projects.length || repos.length}`, label: 'Projects', icon: '🚀' },
+                { value: repos.length,               label: 'Repositories Analyzed', icon: '📁' },
+                { value: `${topSkills.length}+`,     label: 'Core Technologies',     icon: '⚙️' },
+                { value: projects.length || repos.length, label: 'Featured Projects', icon: '🚀' },
+                ...(aiRepoCount > 0 ? [{ value: aiRepoCount, label: 'AI Systems Built', icon: '🤖' }] : []),
               ].map((s, i, arr) => (
                 <div key={i} style={{
                   flex: 1, padding: '11px 8px', textAlign: 'center',
@@ -651,9 +726,33 @@ export default function PublicPortfolio({ slug }) {
             </div>
           </Section>
 
-          {/* ── What I Built (projects quick-list) ─────────────────── */}
+          {/* ── Career Alignment ────────────────────────────────────── */}
+          {careerSignals.length > 0 && (
+            <Section icon="🎯" title="Career Alignment">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {careerSignals.sort((a, b) => b.score - a.score).map(({ domain, score }, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: '600', color: T, minWidth: '160px' }}>{domain}</span>
+                    <div style={{ display: 'flex', gap: '3px' }}>
+                      {[1,2,3,4,5].map(n => (
+                        <span key={n} style={{
+                          fontSize: '14px',
+                          color: n <= score ? '#f59e0b' : '#e2e8f0',
+                        }}>★</span>
+                      ))}
+                    </div>
+                    <span style={{ fontSize: '11px', color: TM, fontWeight: '600' }}>
+                      {score === 5 ? 'Expert' : score === 4 ? 'Strong' : score === 3 ? 'Proficient' : 'Developing'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Section>
+          )}
+
+          {/* ── Featured Projects (impact-focused cards) ────────────── */}
           {projects.length > 0 && (
-            <Section id="projects" icon="🚀" title="What I Built">
+            <Section id="projects" icon="🚀" title="Featured Projects">
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '10px', marginBottom: '8px' }}>
                 {projects.map((p, i) => (
                   <div key={i} style={{
@@ -686,10 +785,10 @@ export default function PublicPortfolio({ slug }) {
             </Section>
           )}
 
-          {/* ── Featured Projects (detailed cards) ─────────────────── */}
-          {repos.length > 0 && (
-            <Section icon="📁" title="Featured Projects">
-              {repos.map((repo, i) => (
+          {/* ── Project Details (ranked by confidence) ─────────────── */}
+          {rankedRepos.length > 0 && (
+            <Section icon="📁" title="Project Details">
+              {rankedRepos.map((repo, i) => (
                 <ProjectCard key={i} repo={repo} featured={i < 2} />
               ))}
             </Section>
@@ -698,12 +797,12 @@ export default function PublicPortfolio({ slug }) {
           {/* ── Experience ─────────────────────────────────────────── */}
           {repos.length > 0 && (
             <Section id="experience" icon="💼" title="Experience">
-              <Timeline repos={repos} />
+              <Timeline repos={rankedRepos} />
             </Section>
           )}
 
           {/* ── Let's Connect ──────────────────────────────────────── */}
-          {githubUsername && (
+          {(githubUsername || profile?.email || profile?.linkedinUrl) && (
             <div style={{
               padding: '20px 24px',
               border: `1px solid ${BD}`, borderRadius: '12px',
@@ -716,15 +815,25 @@ export default function PublicPortfolio({ slug }) {
                 <h3 style={{ margin: '0 0 4px', fontSize: '15px', fontWeight: '700', color: T }}>Let's Connect</h3>
                 <p style={{ margin: 0, fontSize: '12px', color: TS }}>Open to exciting opportunities and collaborations.</p>
               </div>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <a href={`https://github.com/${githubUsername}`} target="_blank" rel="noreferrer"
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '6px',
-                    padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '600',
-                    border: `1px solid ${BD}`, color: T, backgroundColor: '#fff', textDecoration: 'none',
-                  }}>
-                  🐙 GitHub
-                </a>
+              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                {(profile?.githubUrl || githubUsername) && (
+                  <a href={profile?.githubUrl || `https://github.com/${githubUsername}`} target="_blank" rel="noreferrer"
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', border: `1px solid ${BD}`, color: T, backgroundColor: '#fff', textDecoration: 'none' }}>
+                    🐙 GitHub
+                  </a>
+                )}
+                {profile?.linkedinUrl && (
+                  <a href={profile.linkedinUrl} target="_blank" rel="noreferrer"
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', backgroundColor: A, color: '#fff', textDecoration: 'none', border: 'none' }}>
+                    LinkedIn →
+                  </a>
+                )}
+                {profile?.email && (
+                  <a href={`mailto:${profile.email}`}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', border: `1px solid ${BD}`, color: T, backgroundColor: '#fff', textDecoration: 'none' }}>
+                    📧 Email
+                  </a>
+                )}
               </div>
             </div>
           )}

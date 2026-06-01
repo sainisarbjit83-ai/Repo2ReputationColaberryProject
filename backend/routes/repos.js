@@ -10,6 +10,7 @@ const GITHUB_API = 'https://api.github.com';
 const GITHUB_HEADERS = {
   'User-Agent': 'Repo2Reputation/1.0',
   'Accept': 'application/vnd.github.v3+json',
+  ...(process.env.GITHUB_TOKEN && { Authorization: `token ${process.env.GITHUB_TOKEN}` }),
 };
 const README_MAX_REPO_SIZE_KB = 5120; // skip README fetch if repo > 5 MB
 

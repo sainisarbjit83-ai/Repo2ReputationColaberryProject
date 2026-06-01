@@ -72,43 +72,120 @@ async function analyzeRepository(repo) {
   return JSON.parse(raw);
 }
 
-const NARRATIVE_SYSTEM_PROMPT = `You are a professional technical writer creating recruiter-facing portfolio narratives for software developers.
+const NARRATIVE_SYSTEM_PROMPT = `You are a technical portfolio writer creating first-person developer portfolio content.
 
-Given evidence from one or more GitHub repository analyses, write a compelling professional narrative grounded strictly in the provided data.
+Write exclusively in first person. Never use "This developer...", "The candidate...", or any third-person phrasing.
+
+Each repository in the input includes deep analysis intelligence: Project Hook, Project Narrative, Resume Highlights, Business Domain, and Technical Differentiation. Use this as primary source of truth. Legacy summary text is a fallback only.
 
 Rules:
-- Write in third person (e.g. "This developer...")
-- Only reference technologies and projects explicitly listed in the evidence
-- Do not invent skills, experience, or claims not present in the data
-- top_skills must be deduplicated across all repos and ranked by confidence (highest first), max 10
-- Each project one_liner must describe what the repo actually does, not just its tech stack
-- narrative must be 3–4 paragraphs: opening strength summary, technical depth, project highlights, closing value statement
+- headline: one first-person sentence naming what was actually built and the engineering domains it spans (e.g. "I build AI orchestration systems, backend APIs, and full-stack applications using TypeScript, OpenAI, and Node.js.")
+- narrative: 3-4 paragraphs in first person: (1) what I build and what problems I solve using concrete project examples, (2) technical depth citing specific technologies and architecture patterns from the data, (3) project-specific highlights drawing from the provided hook sentences and impact statements, (4) what I bring to a team and what I'm looking to work on next
+- projects one_liners: use the provided "Project Hook" sentence directly — do NOT write generic technology descriptions
+- top_skills: deduplicate across repos, rank by confidence (highest first), max 10
+- engineering_strengths: 4-8 specific engineering strengths actually evidenced by the analysis (e.g. "AI Integration", "Backend API Development", "System Architecture", "Database Design") — only include what is clearly present in the data
+- career_signals: estimate strength score 1-5 for each applicable domain based on the analysis evidence — only include domains with score >= 2: AI Engineering, Backend Engineering, System Design, Frontend Engineering, DevOps, Security, Data Engineering
+- NEVER use: "strong software engineering skills", "demonstrates strong", "passionate about", "solid foundation"
+- ALWAYS ground every claim in the provided Project Hooks, Resume Highlights, and Technical Differentiation
 
 Return ONLY valid JSON with this exact structure:
 {
-  "headline": "One sentence that captures this developer's core identity and top strengths.",
-  "narrative": "3–4 paragraph professional bio written in third person.",
+  "headline": "First-person headline naming actual domains and technologies built.",
+  "narrative": "3-4 paragraph first-person bio grounded in the specific project data provided.",
   "top_skills": [
     { "name": "React", "category": "Frontend", "confidence": 0.94 }
   ],
   "projects": [
-    { "repoName": "my-app", "oneLiner": "A REST API for managing..." }
+    { "repoName": "my-app", "oneLiner": "Use the Project Hook sentence from input when available." }
+  ],
+  "engineering_strengths": ["AI Integration", "Backend API Development", "System Architecture"],
+  "career_signals": [
+    { "domain": "AI Engineering", "score": 5 },
+    { "domain": "Backend Engineering", "score": 4 }
   ]
 }`;
 
 function buildNarrativeUserPrompt(analyses) {
+  const lines = s => (Array.isArray(s) ? s : []).map(x => `  - ${x}`).join('\n') || '  - None';
+
   const sections = analyses.map((a, i) => {
+    const intel = a.intelligence;         // deep analysis Phase 5 — may be null
+    const pn    = intel?.portfolioNarrative;
+    const bv    = intel?.businessValue;
+    const res   = intel?.resume;
+
+    // ── Project identity ──────────────────────────────────────────────────────
+    const hook = pn?.hookSentence
+              || a.whatItDoes
+              || a.description
+              || 'No description available';
+
+    let section = `Repository ${i + 1}: ${a.repoName}`;
+    section += `\nProject Hook: ${hook}`;
+
+    // ── Deep narrative (use intelligence story if available) ──────────────────
+    if (pn?.story) {
+      section += `\nProject Narrative: ${pn.story}`;
+    } else if (a.summary) {
+      section += `\nSummary: ${a.summary}`;
+    }
+
+    if (pn?.projectImpact) {
+      section += `\nProject Impact: ${pn.projectImpact}`;
+    }
+
+    // ── Technical differentiation (specific, non-generic signals) ────────────
+    if (pn?.technicalDifferentiation?.length > 0) {
+      section += `\nTechnical Differentiation:\n${lines(pn.technicalDifferentiation)}`;
+    }
+
+    // ── Resume highlights (concrete, ATS-ready bullets) ───────────────────────
+    if (res?.bulletPoints?.length > 0) {
+      section += `\nResume Highlights:\n${lines(res.bulletPoints)}`;
+    }
+    if (res?.impactStatements?.length > 0) {
+      section += `\nImpact Statements:\n${lines(res.impactStatements)}`;
+    }
+    if (res?.suggestedTitle) {
+      section += `\nSuggested Role Title: ${res.suggestedTitle}`;
+    }
+
+    // ── Business value ────────────────────────────────────────────────────────
+    if (bv?.probableDomain) {
+      section += `\nBusiness Domain: ${bv.probableDomain}`;
+    }
+    if (bv?.userValue) {
+      section += `\nUser Value: ${bv.userValue}`;
+    }
+    if (bv?.operationalCapabilities?.length > 0) {
+      section += `\nOperational Capabilities:\n${lines(bv.operationalCapabilities.slice(0, 5))}`;
+    }
+
+    // ── Technologies ──────────────────────────────────────────────────────────
     const techs = (a.technologies || [])
       .map(t => `  - ${t.name} (${t.category}, confidence: ${t.confidence})`)
       .join('\n');
+    section += `\nTechnologies:\n${techs || '  - None detected'}`;
 
-    return `Repository ${i + 1}: ${a.repoName}
-Description: ${a.description || 'No description'}
-What it does: ${a.whatItDoes || 'Not specified'}
-Summary: ${a.summary || 'Not specified'}
-Technologies:
-${techs || '  - None detected'}
-Strengths: ${a.highlights?.strengths || 'Not specified'}`;
+    // ── Legacy highlights fallback (only when no deep intelligence) ───────────
+    if (!intel && a.highlights?.strengths) {
+      section += `\nStrengths: ${a.highlights.strengths}`;
+    }
+
+    // ── Inference engine output (Phase 6 cross-phase synthesis) ──────────────
+    if (a.inference) {
+      const assessment    = a.inference.overallAssessment || {};
+      const strengthLines = lines(a.inference.strengths);
+      section += `\nDeep Analysis (cross-phase structural evidence):`;
+      section += `\n  Engineering level: ${assessment.engineeringLevel || 'unknown'}`;
+      section += `\n  Portfolio strength: ${assessment.portfolioStrength || 'unknown'}`;
+      section += `\n  Project maturity: ${assessment.projectMaturity || 'unknown'}`;
+      section += `\n  Deployment readiness: ${assessment.deploymentReadiness || 'unknown'}`;
+      section += `\n  Confidence score: ${a.inference.confidence?.overall ?? 'unknown'}`;
+      section += `\n  Confirmed architectural strengths:\n${strengthLines}`;
+    }
+
+    return section;
   });
 
   return sections.join('\n\n---\n\n');

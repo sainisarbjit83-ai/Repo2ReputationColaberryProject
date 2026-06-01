@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db/postgres');
 const authMiddleware = require('../middleware/authMiddleware');
 const { generatePortfolioNarrative } = require('../services/openai');
+const { generatePortfolioPdf } = require('../services/pdfGenerator');
 
 const router = express.Router();
 
@@ -49,8 +50,13 @@ router.post('/', authMiddleware, async (req, res) => {
     }
 
     const analysisCheck = await pool.query(
-      `SELECT DISTINCT repository_id FROM analyses
-       WHERE repository_id = ANY($1::uuid[]) AND status = 'completed'`,
+      `SELECT DISTINCT repository_id FROM (
+         SELECT repository_id FROM analyses
+         WHERE repository_id = ANY($1::uuid[]) AND status = 'completed'
+         UNION
+         SELECT repository_id FROM deep_analyses
+         WHERE repository_id = ANY($1::uuid[]) AND status IN ('completed', 'partial')
+       ) AS analyzed`,
       [repositoryIds]
     );
 
@@ -186,16 +192,20 @@ router.get('/public/:slug', async (req, res) => {
     }));
 
     const narrative = portfolio.content_json?.narrative || {};
+    const profile   = portfolio.content_json?.profile   || {};
 
     return res.status(200).json({
       success: true,
       data: {
-        title:       portfolio.title,
-        slug:        portfolio.slug,
-        headline:    narrative.headline   || null,
-        narrative:   narrative.narrative  || null,
-        topSkills:   narrative.top_skills || [],
-        projects:    narrative.projects   || [],
+        title:                portfolio.title,
+        slug:                 portfolio.slug,
+        headline:             narrative.headline             || null,
+        narrative:            narrative.narrative            || null,
+        topSkills:            narrative.top_skills           || [],
+        projects:             narrative.projects             || [],
+        engineeringStrengths: narrative.engineering_strengths || [],
+        careerSignals:        narrative.career_signals        || [],
+        profile,
         publishedAt: portfolio.published_at,
         repos,
       },
@@ -203,6 +213,72 @@ router.get('/public/:slug', async (req, res) => {
   } catch (err) {
     console.error('[portfolios] public get error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to fetch portfolio.' } });
+  }
+});
+
+// GET /api/portfolios/public/:slug/pdf — generate and return a PDF resume (no auth)
+router.get('/public/:slug/pdf', async (req, res) => {
+  const { slug } = req.params;
+
+  try {
+    const portfolioResult = await pool.query(
+      `SELECT id, title, slug, content_json
+       FROM portfolios
+       WHERE slug = $1 AND status = 'published' AND visibility = 'public'`,
+      [slug]
+    );
+
+    if (!portfolioResult.rows[0]) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Portfolio not found.' } });
+    }
+
+    const portfolio = portfolioResult.rows[0];
+    const repositoryIds = portfolio.content_json?.repository_ids || [];
+
+    const reposResult = await pool.query(
+      `SELECT r.id AS repo_id, r.name, r.full_name,
+              a.skills_json, a.summary_json
+       FROM repositories r
+       LEFT JOIN LATERAL (
+         SELECT skills_json, summary_json
+         FROM analyses
+         WHERE repository_id = r.id AND status = 'completed'
+         ORDER BY created_at DESC LIMIT 1
+       ) a ON true
+       WHERE r.id = ANY($1::uuid[])`,
+      [repositoryIds]
+    );
+
+    const narrative = portfolio.content_json?.narrative || {};
+    const githubUsername = reposResult.rows.find(r => r.full_name)?.full_name?.split('/')?.[0] || null;
+
+    const repos = reposResult.rows.map(r => ({
+      name: r.name,
+      fullName: r.full_name,
+      analysis: r.skills_json ? {
+        technologies: r.skills_json,
+        whatItDoes:   r.summary_json?.what_it_does,
+      } : null,
+    }));
+
+    const pdfBuffer = await generatePortfolioPdf({
+      title:          portfolio.title,
+      headline:       narrative.headline   || null,
+      narrative:      narrative.narrative  || null,
+      topSkills:      narrative.top_skills || [],
+      projects:       narrative.projects   || [],
+      repos,
+      githubUsername,
+    });
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${slug}-resume.pdf"`);
+    res.setHeader('Content-Length', pdfBuffer.length);
+    return res.send(pdfBuffer);
+
+  } catch (err) {
+    console.error('[portfolios] pdf error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to generate PDF.' } });
   }
 });
 
@@ -271,6 +347,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
         visibility:      portfolio.visibility,
         narrative:       portfolio.content_json?.narrative || null,
         narrativeStatus: portfolio.content_json?.narrative_status || null,
+        profile:         portfolio.content_json?.profile   || {},
         publishedAt:     portfolio.published_at,
         createdAt:       portfolio.created_at,
         updatedAt:       portfolio.updated_at,
@@ -310,7 +387,8 @@ router.post('/:id/generate-narrative', authMiddleware, async (req, res) => {
 
     const reposResult = await pool.query(
       `SELECT r.name, r.description,
-              a.skills_json, a.summary_json
+              a.skills_json, a.summary_json,
+              da.inference_json, da.intelligence_json
        FROM repositories r
        LEFT JOIN LATERAL (
          SELECT skills_json, summary_json
@@ -318,6 +396,12 @@ router.post('/:id/generate-narrative', authMiddleware, async (req, res) => {
          WHERE repository_id = r.id AND status = 'completed'
          ORDER BY created_at DESC LIMIT 1
        ) a ON true
+       LEFT JOIN LATERAL (
+         SELECT inference_json, intelligence_json
+         FROM deep_analyses
+         WHERE repository_id = r.id AND status IN ('completed', 'partial')
+         ORDER BY completed_at DESC LIMIT 1
+       ) da ON true
        WHERE r.id = ANY($1::uuid[]) AND r.user_id = $2 AND a.skills_json IS NOT NULL`,
       [repositoryIds, userId]
     );
@@ -340,7 +424,8 @@ router.post('/:id/generate-narrative', authMiddleware, async (req, res) => {
       [JSON.stringify(updatedContent), id]
     );
 
-    // Build input array for the narrative service
+    // Build input array for the narrative service.
+    // Prioritises deep analysis intelligence when available; falls back to legacy analysis.
     const analyses = reposResult.rows.map(r => ({
       repoName:     r.name,
       description:  r.description,
@@ -348,6 +433,8 @@ router.post('/:id/generate-narrative', authMiddleware, async (req, res) => {
       summary:      r.summary_json?.text || '',
       whatItDoes:   r.summary_json?.what_it_does || '',
       highlights:   r.summary_json?.highlights || {},
+      inference:    r.inference_json    || null,
+      intelligence: r.intelligence_json || null,
     }));
 
     // Run generation in background — non-blocking
@@ -385,6 +472,66 @@ router.post('/:id/generate-narrative', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('[portfolios] generate-narrative error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to start narrative generation.' } });
+  }
+});
+
+// PATCH /api/portfolios/:id — update editable fields: narrative content + profile
+router.patch('/:id', authMiddleware, async (req, res) => {
+  const { id: userId } = req.user;
+  const { id } = req.params;
+  const { headline, narrative, top_skills, projects, profile } = req.body;
+
+  const hasNarrativeField = headline !== undefined || narrative !== undefined
+    || top_skills !== undefined || projects !== undefined;
+  const hasProfileField = profile !== undefined;
+
+  if (!hasNarrativeField && !hasProfileField) {
+    return res.status(400).json({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'Provide at least one field to update.' },
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT id, content_json FROM portfolios WHERE id = $1 AND user_id = $2`,
+      [id, userId]
+    );
+
+    if (!result.rows[0]) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Portfolio not found.' } });
+    }
+
+    const current = result.rows[0].content_json;
+
+    // Deep-merge only the supplied narrative fields — untouched fields are preserved
+    const updatedNarrative = {
+      ...(current?.narrative || {}),
+      ...(headline   !== undefined && { headline }),
+      ...(narrative  !== undefined && { narrative }),
+      ...(top_skills !== undefined && { top_skills }),
+      ...(projects   !== undefined && { projects }),
+    };
+
+    // Merge profile — overwrite only supplied keys
+    const updatedProfile = hasProfileField
+      ? { ...(current?.profile || {}), ...profile }
+      : (current?.profile || {});
+
+    const updatedContent = { ...current, narrative: updatedNarrative, profile: updatedProfile };
+
+    await pool.query(
+      `UPDATE portfolios SET content_json = $1, updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(updatedContent), id]
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: { portfolioId: id, narrative: updatedNarrative, profile: updatedProfile },
+    });
+  } catch (err) {
+    console.error('[portfolios] patch error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to update portfolio.' } });
   }
 });
 

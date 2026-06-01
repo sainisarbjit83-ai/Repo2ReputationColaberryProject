@@ -214,45 +214,6 @@ function Header({ onLogout }) {
         </div>
       </div>
 
-      {/* HERO */}
-      <div className="mt-3 rounded-2xl border border-gray-200 bg-white px-8 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
-
-          <div className="lg:col-span-1 flex items-start gap-3">
-            <div className="w-9 h-9 rounded-full border-2 border-indigo-500 flex items-center justify-center text-indigo-500 text-lg flex-shrink-0 mt-1">
-              ☆
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold leading-snug text-gray-900">
-                              Turn your GitHub work into a reputation that speaks for you.
-              </h2>
-              <p className="text-sm text-slate-500 mt-2 leading-relaxed">
-                We analyze your repositories and highlight your skills, impact, and expertise.
-              </p>
-            </div>
-          </div>
-
-          <div className="lg:col-span-2 flex flex-col sm:flex-row gap-6">
-            {[
-              { icon: '✦', title: 'AI-Powered Analysis',  desc: 'Deep code & documentation understanding' },
-              { icon: '◈', title: 'Skill Extraction',     desc: 'Identify technologies, patterns & strengths' },
-              { icon: '▤', title: 'Portfolio Ready',      desc: 'Beautiful reports to showcase your work' },
-            ].map(f => (
-              <div key={f.title} className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-400 text-lg flex-shrink-0">
-                  {f.icon}
-                </div>
-                <div>
-                  <p className="font-bold text-gray-900 text-sm">{f.title}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">{f.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-
-        </div>
-      </div>
-
       {/* REPO SECTION */}
       <div className="mt-4 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
 
