@@ -90,7 +90,7 @@ Helping developers improve repositories before generating a portfolio.
 
 ## Product Demo
 
-![End-to-end Demo](docs/media/demo.gif)
+![End-to-end Demo](docs/images/demo.gif)
 
 > [Watch Full Demo Video](docs/media/demo.mp4)
 
