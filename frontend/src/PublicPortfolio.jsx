@@ -54,6 +54,39 @@ function groupByCategory(skills) {
   }, {})
 }
 
+// ─── Years-of-experience helpers (LinkedIn / profile data only) ───────────────
+function parseExpDate(str) {
+  if (!str || typeof str !== 'string') return null
+  str = str.trim()
+  if (/present|current|now/i.test(str)) return null
+  if (/^\d{4}$/.test(str)) return new Date(parseInt(str), 0, 1)
+  const months = { jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11 }
+  const m = str.match(/^([A-Za-z]+)\s+(\d{4})$/)
+  if (m) {
+    const mo = months[m[1].toLowerCase().slice(0, 3)]
+    if (mo !== undefined) return new Date(parseInt(m[2]), mo, 1)
+  }
+  const d = new Date(str)
+  return isNaN(d.getTime()) ? null : d
+}
+
+function getYearsExperience(linkedin, profile) {
+  const experiences = [
+    ...(linkedin?.experience || []),
+    ...(profile?.experience  || []),
+  ]
+  if (experiences.length === 0) return null
+  let earliest = null
+  for (const exp of experiences) {
+    const d = parseExpDate(exp.startDate || exp.start_date || exp.startYear || '')
+    if (d && (!earliest || d < earliest)) earliest = d
+  }
+  if (!earliest) return null
+  const years = Math.floor((Date.now() - earliest.getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+  if (years < 1) return null
+  return years === 1 ? '1+ Year' : `${years}+ Years`
+}
+
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 function Sidebar({ title, headline, topSkills, githubUsername, profile, engineeringStrengths, repoCount }) {
   const grouped     = groupByCategory(topSkills)
@@ -343,30 +376,23 @@ function Section({ id, icon, title, children, right }) {
   )
 }
 
-function ConfidenceBadge({ score }) {
-  if (score == null) return null
-  const pct = Math.round(score * 100)
-  const { bg, text, label } =
-    pct >= 80 ? { bg: '#dcfce7', text: '#166534', label: 'High' } :
-    pct >= 50 ? { bg: '#fef3c7', text: '#92400e', label: 'Medium' } :
-                { bg: '#f1f5f9', text: '#475569', label: 'Low' }
-  return (
-    <span style={{
-      padding: '2px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: '700',
-      backgroundColor: bg, color: text, flexShrink: 0,
-    }}>
-      🤖 AI {label} · {pct}%
-    </span>
-  )
-}
 
 // ─── Project card ─────────────────────────────────────────────────────────────
-function ProjectCard({ repo, featured }) {
-  const [hov, setHov] = useState(false)
+function ProjectCard({ repo, oneLiner, aiDescription }) {
+  const [hov, setHov]           = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const techs  = (repo.analysis?.technologies || []).slice(0, 6)
   const topics = Array.isArray(repo.topics) ? repo.topics : (repo.topics ? JSON.parse(repo.topics) : [])
-  const tags   = [...techs.map(t => t.name), ...topics].slice(0, 7)
-  const desc   = repo.analysis?.whatItDoes || repo.description || ''
+  const tags   = [...techs.map(t => t.name), ...topics].slice(0, 6)
+  const shortDesc = oneLiner || repo.analysis?.whatItDoes || repo.description || repo.analysis?.summary || ''
+
+  const paragraphs = expanded && aiDescription
+    ? aiDescription.split(/\n\n+/).filter(Boolean)
+    : null
+
+  const hasReadMore = aiDescription || shortDesc.length > 120
+  const stars = repo.stars || 0
+  const forks = repo.forks || 0
 
   return (
     <div
@@ -374,19 +400,19 @@ function ProjectCard({ repo, featured }) {
       onMouseLeave={() => setHov(false)}
       style={{
         display: 'flex', gap: '14px',
-        padding: '10px 12px', marginBottom: '8px',
+        padding: '14px 16px', marginBottom: '14px',
         border: `1px solid ${hov ? '#a5b4fc' : BD}`,
         borderRadius: '12px', backgroundColor: '#fff',
         transition: 'border-color 0.2s, box-shadow 0.2s',
         boxShadow: hov ? '0 4px 16px rgba(67,97,238,0.1)' : '0 1px 3px rgba(0,0,0,0.04)',
       }}
     >
-      {/* Thumbnail */}
+      {/* Thumbnail — reduced width to give content more space */}
       <div style={{
-        width: '120px', height: '72px', borderRadius: '8px', flexShrink: 0,
+        width: '88px', height: '60px', borderRadius: '8px', flexShrink: 0,
         background: gradient(repo.name),
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        overflow: 'hidden', position: 'relative',
+        overflow: 'hidden',
       }}>
         {repo.gifUrl ? (
           <img
@@ -396,49 +422,93 @@ function ProjectCard({ repo, featured }) {
             onError={e => { e.target.style.display = 'none' }}
           />
         ) : (
-          <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '11px', fontWeight: '600', textAlign: 'center', padding: '0 8px' }}>
-            {repo.name?.slice(0, 16)}
+          <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '10px', fontWeight: '600', textAlign: 'center', padding: '0 6px' }}>
+            {repo.name?.slice(0, 14)}
           </span>
         )}
       </div>
 
       {/* Details */}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '7px', flexWrap: 'wrap' }}>
-          <h3 style={{ margin: 0, fontSize: '15px', fontWeight: '700', color: T }}>{formatRepoName(repo.name)}</h3>
-          {featured && (
-            <span style={{ padding: '2px 9px', borderRadius: '20px', fontSize: '10px', fontWeight: '700', backgroundColor: '#dbeafe', color: '#1d4ed8' }}>
-              Featured
-            </span>
-          )}
-        </div>
 
-        {desc && (
-          <p style={{ margin: '0 0 7px', fontSize: '11px', color: TS, lineHeight: 1.5,
-            overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-            {desc}
+        {/* 1. Title */}
+        <button
+          onClick={() => setExpanded(e => !e)}
+          style={{
+            margin: '0 0 6px', padding: 0, border: 'none', background: 'none', cursor: 'pointer',
+            fontSize: '15px', fontWeight: '700', color: T, textAlign: 'left',
+            display: 'block', lineHeight: 1.3,
+            transition: 'color 0.15s',
+          }}
+          className="proj-link"
+        >
+          {formatRepoName(repo.name)}
+        </button>
+
+        {/* 2. Summary (collapsed) or AI Analysis (expanded) */}
+        {!expanded && shortDesc && (
+          <p style={{
+            margin: '0 0 8px', fontSize: '12px', color: TS, lineHeight: 1.7,
+            overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+          }}>
+            {shortDesc}
           </p>
         )}
 
+        {expanded && (
+          <div style={{ marginBottom: '10px' }}>
+            {paragraphs ? (
+              <div style={{
+                padding: '12px 14px',
+                backgroundColor: '#f8faff',
+                border: `1px solid #e0e7ff`,
+                borderRadius: '8px',
+              }}>
+                <span style={{ fontSize: '10px', fontWeight: '700', color: '#4361ee', textTransform: 'uppercase', letterSpacing: '0.8px', display: 'block', marginBottom: '8px' }}>
+                  Project Overview
+                </span>
+                {paragraphs.map((para, i) => (
+                  <p key={i} style={{ margin: i > 0 ? '10px 0 0' : '0', fontSize: '12px', color: TS, lineHeight: 1.75 }}>
+                    {para}
+                  </p>
+                ))}
+              </div>
+            ) : shortDesc ? (
+              <p style={{ margin: 0, fontSize: '12px', color: TS, lineHeight: 1.7 }}>
+                {shortDesc}
+              </p>
+            ) : null}
+          </div>
+        )}
+
+        {/* 3. Technology chips */}
         {tags.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '7px' }}>
-            {tags.slice(0, 4).map((tag, i) => (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '9px' }}>
+            {tags.map((tag, i) => (
               <span key={i} style={{
-                padding: '1px 7px', borderRadius: '5px', fontSize: '10px', fontWeight: '600',
+                padding: '2px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: '600',
                 backgroundColor: '#f1f5f9', color: '#334155', border: `1px solid ${BD}`,
               }}>{tag}</span>
             ))}
           </div>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-          <div style={{ display: 'flex', gap: '14px', fontSize: '12px', color: TM }}>
-            <span>☆ {repo.stars || 0}</span>
-            <span>⑂ {repo.forks || 0}</span>
-            {repo.language && <span>● {repo.language}</span>}
+        {/* 4. Bottom row: confidence score | vanity metrics (only if meaningful) | Read more */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {stars > 10 && <span style={{ fontSize: '11px', color: TM }}>☆ {stars}</span>}
+            {forks > 10 && <span style={{ fontSize: '11px', color: TM }}>⑂ {forks}</span>}
           </div>
-          <ConfidenceBadge score={repo.analysis?.confidenceScore} />
+          {hasReadMore && (
+            <button
+              onClick={() => setExpanded(e => !e)}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '11px', fontWeight: '600', color: A }}
+            >
+              {expanded ? 'Show less ↑' : 'Read more ↓'}
+            </button>
+          )}
         </div>
+
       </div>
     </div>
   )
@@ -554,42 +624,42 @@ function buildImpactStatement(repo) {
 // ─── Experience timeline ──────────────────────────────────────────────────────
 function Timeline({ repos }) {
   return (
-    <div style={{ position: 'relative', paddingLeft: '20px' }}>
-      <div style={{ position: 'absolute', left: '5px', top: 0, bottom: 0, width: '2px', backgroundColor: BD }} />
+    <div style={{ position: 'relative', paddingLeft: '26px' }}>
+      <div style={{ position: 'absolute', left: '9px', top: 0, bottom: 0, width: '2px', backgroundColor: BD }} />
 
       {repos.map((repo, i) => {
-        const roleTitle  = inferRoleTitle(repo)
+        const roleTitle   = inferRoleTitle(repo)
         const displayName = formatRepoName(repo.name)
-        const impact     = buildImpactStatement(repo)
-        const techChips  = (repo.analysis?.technologies || []).slice(0, 5).map(t => t.name)
+        const impact      = buildImpactStatement(repo)
+        const techChips   = (repo.analysis?.technologies || []).slice(0, 5).map(t => t.name)
 
         return (
-          <div key={i} style={{ display: 'flex', gap: '18px', marginBottom: '16px', position: 'relative' }}>
+          <div key={i} style={{ display: 'flex', marginBottom: '24px', position: 'relative', alignItems: 'flex-start' }}>
             {/* Dot */}
             <div style={{
-              position: 'absolute', left: '-18px', top: '5px',
-              width: '10px', height: '10px', borderRadius: '50%',
-              backgroundColor: A, border: '2px solid #fff',
-              boxShadow: `0 0 0 2px ${A}`, flexShrink: 0,
+              position: 'absolute', left: '-20px', top: '4px',
+              width: '12px', height: '12px', borderRadius: '50%',
+              backgroundColor: A, border: '3px solid #fff',
+              boxShadow: `0 0 0 2px ${A}`, zIndex: 1,
             }} />
 
             <div style={{ flex: 1 }}>
-              <h4 style={{ margin: '0 0 2px', fontSize: '14px', fontWeight: '700', color: T, letterSpacing: '-0.2px' }}>
+              <h4 style={{ margin: '0 0 3px', fontSize: '15px', fontWeight: '700', color: T }}>
                 {roleTitle}
               </h4>
-              <p style={{ margin: '0 0 6px', fontSize: '12px', color: A, fontWeight: '600' }}>
+              <p style={{ margin: '0 0 8px', fontSize: '13px', color: A, fontWeight: '600' }}>
                 {displayName}
               </p>
               {impact && (
-                <p style={{ margin: '0 0 7px', fontSize: '12px', color: TS, lineHeight: 1.65 }}>
+                <p style={{ margin: '0 0 8px', fontSize: '12px', color: TS, lineHeight: 1.65 }}>
                   {impact}
                 </p>
               )}
               {techChips.length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
                   {techChips.map((t, j) => (
                     <span key={j} style={{
-                      padding: '1px 7px', borderRadius: '4px', fontSize: '10px', fontWeight: '600',
+                      padding: '2px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: '600',
                       backgroundColor: '#f1f5f9', color: '#334155', border: `1px solid ${BD}`,
                     }}>{t}</span>
                   ))}
@@ -656,6 +726,7 @@ export default function PublicPortfolio({ slug }) {
   const {
     title, headline, narrative, topSkills = [], repos = [], projects = [],
     publishedAt, engineeringStrengths = [], careerSignals = [], profile = {},
+    linkedin = null,
   } = portfolio
 
   // Derive GitHub username from any repo fullName (e.g. "username/reponame")
@@ -670,6 +741,8 @@ export default function PublicPortfolio({ slug }) {
     (r.analysis?.technologies || []).some(t => ['OpenAI','LangChain','Anthropic','LlamaIndex'].includes(t.name))
   ).length
 
+  const yearsExp = getYearsExperience(linkedin, profile)
+
   return (
     <div style={{ minHeight: '100vh', backgroundColor: BG, fontFamily: "'Inter', system-ui, sans-serif", color: T }}>
 
@@ -679,6 +752,7 @@ export default function PublicPortfolio({ slug }) {
           #main-content { padding: 0 !important; }
         }
         a:hover { opacity: 0.8; }
+        .proj-link:hover { color: #4361ee !important; }
       `}</style>
 
       <TopNav active={activeTab} onTab={setActiveTab} slug={portfolio.slug} />
@@ -709,10 +783,14 @@ export default function PublicPortfolio({ slug }) {
               overflow: 'hidden', backgroundColor: '#fff', marginTop: '14px',
             }}>
               {[
-                { value: repos.length,               label: 'Repositories Analyzed', icon: '📁' },
-                { value: `${topSkills.length}+`,     label: 'Core Technologies',     icon: '⚙️' },
-                { value: projects.length || repos.length, label: 'Featured Projects', icon: '🚀' },
-                ...(aiRepoCount > 0 ? [{ value: aiRepoCount, label: 'AI Systems Built', icon: '🤖' }] : []),
+                yearsExp
+                  ? { value: yearsExp,      label: 'Years Experience',     icon: '📅' }
+                  : aiRepoCount > 0
+                    ? { value: aiRepoCount, label: 'AI Engineering',        icon: '🤖' }
+                    : { value: '✓',         label: 'Professional Portfolio', icon: '💼' },
+                { value: `${topSkills.length}+`,          label: 'Core Technologies', icon: '⚙️' },
+                { value: repos.length, label: 'Projects', icon: '🚀' },
+                ...(yearsExp && aiRepoCount > 0 ? [{ value: aiRepoCount, label: 'AI Systems Built', icon: '🤖' }] : []),
               ].map((s, i, arr) => (
                 <div key={i} style={{
                   flex: 1, padding: '11px 8px', textAlign: 'center',
@@ -726,80 +804,91 @@ export default function PublicPortfolio({ slug }) {
             </div>
           </Section>
 
-          {/* ── Career Alignment ────────────────────────────────────── */}
-          {careerSignals.length > 0 && (
-            <Section icon="🎯" title="Career Alignment">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {careerSignals.sort((a, b) => b.score - a.score).map(({ domain, score }, i) => (
-                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <span style={{ fontSize: '13px', fontWeight: '600', color: T, minWidth: '160px' }}>{domain}</span>
-                    <div style={{ display: 'flex', gap: '3px' }}>
-                      {[1,2,3,4,5].map(n => (
-                        <span key={n} style={{
-                          fontSize: '14px',
-                          color: n <= score ? '#f59e0b' : '#e2e8f0',
-                        }}>★</span>
-                      ))}
-                    </div>
-                    <span style={{ fontSize: '11px', color: TM, fontWeight: '600' }}>
-                      {score === 5 ? 'Expert' : score === 4 ? 'Strong' : score === 3 ? 'Proficient' : 'Developing'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </Section>
-          )}
 
-          {/* ── Featured Projects (impact-focused cards) ────────────── */}
-          {projects.length > 0 && (
-            <Section id="projects" icon="🚀" title="Featured Projects">
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '10px', marginBottom: '8px' }}>
-                {projects.map((p, i) => (
-                  <div key={i} style={{
-                    padding: '12px 14px',
-                    border: `1px solid ${BD}`, borderRadius: '10px',
-                    backgroundColor: '#fff',
-                    display: 'flex', gap: '10px', alignItems: 'flex-start',
-                  }}>
-                    <div style={{
-                      width: '28px', height: '28px', borderRadius: '7px', flexShrink: 0,
-                      background: gradient(p.repoName),
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '11px', color: 'rgba(255,255,255,0.8)', fontWeight: '700',
-                    }}>
-                      {(p.repoName || '?')[0]}
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <p style={{ margin: '0 0 2px', fontSize: '12px', fontWeight: '700', color: T, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {formatRepoName(p.repoName)}
-                      </p>
-                      {p.oneLiner && (
-                        <p style={{ margin: 0, fontSize: '11px', color: TS, lineHeight: 1.5 }}>
-                          {p.oneLiner}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Section>
-          )}
-
-          {/* ── Project Details (ranked by confidence) ─────────────── */}
+          {/* ── Projects (ranked by confidence) ──────────────────────── */}
           {rankedRepos.length > 0 && (
-            <Section icon="📁" title="Project Details">
-              {rankedRepos.map((repo, i) => (
-                <ProjectCard key={i} repo={repo} featured={i < 2} />
-              ))}
+            <Section id="projects" icon="🚀" title="Projects">
+              {rankedRepos.map((repo, i) => {
+                const match = projects.find(p => p.repoName === repo.name)
+                return <ProjectCard key={i} repo={repo} oneLiner={match?.oneLiner} aiDescription={match?.description} />
+              })}
             </Section>
           )}
 
           {/* ── Experience ─────────────────────────────────────────── */}
-          {repos.length > 0 && (
-            <Section id="experience" icon="💼" title="Experience">
-              <Timeline repos={rankedRepos} />
-            </Section>
-          )}
+          <Section id="experience" icon="💼" title="Experience">
+            {linkedin?.experience?.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                {/* LinkedIn experience entries — date left, dot center, content right */}
+                <div style={{ position: 'relative', marginBottom: rankedRepos.length > 0 ? '28px' : '0' }}>
+                  {/* Vertical line sits at: dateColWidth(88) + gap(12) + dotColWidth(22)/2 = 111px */}
+                  <div style={{ position: 'absolute', left: '111px', top: 0, bottom: 0, width: '2px', backgroundColor: BD }} />
+                  {linkedin.experience.map((exp, i) => {
+                    const startYr = exp.startDate?.match(/\d{4}/)?.[0] ?? exp.startDate
+                    const endYr   = /present/i.test(exp.endDate ?? '') ? 'Present' : (exp.endDate?.match(/\d{4}/)?.[0] ?? exp.endDate)
+                    return (
+                      <div key={i} style={{ display: 'flex', marginBottom: '28px', alignItems: 'flex-start' }}>
+                        {/* Date */}
+                        <div style={{ width: '88px', flexShrink: 0, textAlign: 'right', paddingRight: '12px', paddingTop: '3px' }}>
+                          <span style={{ fontSize: '11px', color: TM, fontWeight: '500', whiteSpace: 'nowrap' }}>
+                            {startYr} – {endYr}
+                          </span>
+                        </div>
+                        {/* Dot */}
+                        <div style={{ width: '22px', flexShrink: 0, display: 'flex', justifyContent: 'center', paddingTop: '3px', zIndex: 1, position: 'relative' }}>
+                          <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: A, border: '3px solid #fff', boxShadow: `0 0 0 2px ${A}` }} />
+                        </div>
+                        {/* Content */}
+                        <div style={{ flex: 1, paddingLeft: '14px' }}>
+                          <h4 style={{ margin: '0 0 3px', fontSize: '15px', fontWeight: '700', color: T }}>{exp.role}</h4>
+                          <p style={{ margin: '0 0 8px', fontSize: '13px', color: A, fontWeight: '600' }}>{exp.company}</p>
+                          {exp.bullets?.length > 0 && (
+                            <ul style={{ margin: 0, paddingLeft: '16px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                              {exp.bullets.map((b, j) => (
+                                <li key={j} style={{ fontSize: '12px', color: TS, lineHeight: 1.6 }}>{b}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Education from LinkedIn */}
+                {linkedin.education?.length > 0 && (
+                  <div style={{ marginBottom: rankedRepos.length > 0 ? '28px' : '0' }}>
+                    <h3 style={{ margin: '0 0 14px', fontSize: '11px', fontWeight: '800', color: T, textTransform: 'uppercase', letterSpacing: '1.5px' }}>Education</h3>
+                    <div style={{ position: 'relative' }}>
+                      <div style={{ position: 'absolute', left: '111px', top: 0, bottom: 0, width: '2px', backgroundColor: BD }} />
+                      {linkedin.education.map((edu, i) => (
+                        <div key={i} style={{ display: 'flex', marginBottom: '20px', alignItems: 'flex-start' }}>
+                          {/* Date */}
+                          <div style={{ width: '88px', flexShrink: 0, textAlign: 'right', paddingRight: '12px', paddingTop: '3px' }}>
+                            {(edu.startYear || edu.endYear) && (
+                              <span style={{ fontSize: '11px', color: TM, fontWeight: '500', whiteSpace: 'nowrap' }}>
+                                {edu.startYear ?? '–'} – {edu.endYear ?? '–'}
+                              </span>
+                            )}
+                          </div>
+                          {/* Dot */}
+                          <div style={{ width: '22px', flexShrink: 0, display: 'flex', justifyContent: 'center', paddingTop: '3px', zIndex: 1, position: 'relative' }}>
+                            <div style={{ width: '12px', height: '12px', borderRadius: '50%', backgroundColor: '#10b981', border: '3px solid #fff', boxShadow: '0 0 0 2px #10b981' }} />
+                          </div>
+                          {/* Content */}
+                          <div style={{ flex: 1, paddingLeft: '14px' }}>
+                            <h4 style={{ margin: '0 0 3px', fontSize: '14px', fontWeight: '700', color: T }}>{edu.degree}</h4>
+                            <p style={{ margin: 0, fontSize: '13px', color: '#10b981', fontWeight: '600' }}>{edu.institution}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            ) : null}
+          </Section>
 
           {/* ── Let's Connect ──────────────────────────────────────── */}
           {(githubUsername || profile?.email || profile?.linkedinUrl) && (

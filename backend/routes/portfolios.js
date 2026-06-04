@@ -1,10 +1,32 @@
-const express = require('express');
+const express   = require('express');
+const multer    = require('multer');
+const pdfjsLib  = require('pdfjs-dist/legacy/build/pdf.js');
 const pool = require('../db/postgres');
 const authMiddleware = require('../middleware/authMiddleware');
-const { generatePortfolioNarrative } = require('../services/openai');
+const { generatePortfolioNarrative, extractLinkedInProfile, generateProjectDescription } = require('../services/openai');
 const { generatePortfolioPdf } = require('../services/pdfGenerator');
 
 const router = express.Router();
+const upload  = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+
+// Extracts all text from a PDF buffer using pdfjs-dist (handles LinkedIn PDFs reliably)
+async function extractPdfText(buffer) {
+  const loadingTask = pdfjsLib.getDocument({
+    data:             new Uint8Array(buffer),
+    useWorkerFetch:   false,
+    isEvalSupported:  false,
+    useSystemFonts:   true,
+    disableFontFace:  true,
+  });
+  const pdf   = await loadingTask.promise;
+  const pages = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page    = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    pages.push(content.items.map(item => item.str).join(' '));
+  }
+  return pages.join('\n');
+}
 
 function generateSlug(title) {
   const base = title
@@ -15,6 +37,51 @@ function generateSlug(title) {
     .slice(0, 40);
   const suffix = Math.random().toString(36).slice(2, 8);
   return `${base}-${suffix}`;
+}
+
+// Well-known tech name normalisation map (raw → display)
+const TECH_DISPLAY = {
+  typescript:'TypeScript', javascript:'JavaScript', python:'Python', java:'Java',
+  'c#':'C#', 'c++':'C++', go:'Go', rust:'Rust', ruby:'Ruby', php:'PHP',
+  react:'React', vue:'Vue', angular:'Angular', svelte:'Svelte',
+  nextjs:'Next.js', nuxtjs:'Nuxt.js', remix:'Remix', astro:'Astro',
+  node:'Node.js', nodejs:'Node.js', express:'Express', expressjs:'Express',
+  fastapi:'FastAPI', flask:'Flask', django:'Django', rails:'Rails',
+  nestjs:'NestJS', spring:'Spring', laravel:'Laravel',
+  postgresql:'PostgreSQL', postgres:'PostgreSQL', mysql:'MySQL',
+  mongodb:'MongoDB', redis:'Redis', sqlite:'SQLite',
+  bigquery:'BigQuery', snowflake:'Snowflake', elasticsearch:'Elasticsearch',
+  docker:'Docker', kubernetes:'Kubernetes', terraform:'Terraform',
+  aws:'AWS', gcp:'GCP', azure:'Azure',
+  openai:'OpenAI', anthropic:'Anthropic', langchain:'LangChain',
+  llamaindex:'LlamaIndex', chromadb:'ChromaDB', ollama:'Ollama',
+  prisma:'Prisma', sequelize:'Sequelize', typeorm:'TypeORM',
+  graphql:'GraphQL', grpc:'gRPC', kafka:'Kafka', rabbitmq:'RabbitMQ',
+  tailwind:'Tailwind CSS', bootstrap:'Bootstrap',
+  jest:'Jest', pytest:'pytest', cypress:'Cypress',
+  stripe:'Stripe', firebase:'Firebase', supabase:'Supabase',
+  jwt:'JWT', oauth:'OAuth', clerk:'Clerk',
+};
+
+function normalizeTechName(raw) {
+  const key = raw.toLowerCase().replace(/[\s._-]/g, '');
+  return TECH_DISPLAY[key] || TECH_DISPLAY[raw.toLowerCase()] ||
+    raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+// Merge basic analysis skills_json with deep-analysis intelligence_json.technologies.
+// Keeps all skills_json entries (they have confidence/category), then appends any
+// additional technologies found only in deep analysis, deduplicated case-insensitively.
+// codeIntelJson is deep_analyses.code_intelligence_json — its .technologies field is a
+// flat array of raw lowercase strings (e.g. ['typescript','express','openai','sequelize']).
+function mergeTechnologies(skillsJson, codeIntelJson) {
+  const basic = Array.isArray(skillsJson) ? skillsJson : [];
+  const deepNames = Array.isArray(codeIntelJson?.technologies) ? codeIntelJson.technologies : [];
+  const basicNamesLower = new Set(basic.map(t => t.name.toLowerCase().replace(/[\s._-]/g, '')));
+  const extra = deepNames
+    .filter(n => typeof n === 'string' && !basicNamesLower.has(n.toLowerCase().replace(/[\s._-]/g, '')))
+    .map(n => ({ name: normalizeTechName(n), category: 'Other' }));
+  return [...basic, ...extra];
 }
 
 // POST /api/portfolios — create a portfolio with selected repos
@@ -158,7 +225,8 @@ router.get('/public/:slug', async (req, res) => {
     const reposResult = await pool.query(
       `SELECT r.id AS repo_id, r.name, r.full_name, r.description,
               r.primary_language, r.stars_count, r.forks_count, r.topics,
-              a.confidence_score, a.skills_json, a.summary_json
+              a.confidence_score, a.skills_json, a.summary_json,
+              da.code_intelligence_json
        FROM repositories r
        LEFT JOIN LATERAL (
          SELECT confidence_score, skills_json, summary_json
@@ -166,6 +234,12 @@ router.get('/public/:slug', async (req, res) => {
          WHERE repository_id = r.id AND status = 'completed'
          ORDER BY created_at DESC LIMIT 1
        ) a ON true
+       LEFT JOIN LATERAL (
+         SELECT code_intelligence_json
+         FROM deep_analyses
+         WHERE repository_id = r.id AND status IN ('completed', 'partial')
+         ORDER BY completed_at DESC LIMIT 1
+       ) da ON true
        WHERE r.id = ANY($1::uuid[])`,
       [repositoryIds]
     );
@@ -183,7 +257,7 @@ router.get('/public/:slug', async (req, res) => {
       gifUrl:      repoMedia[r.repo_id]?.gifUrl || null,
       analysis: r.skills_json ? {
         confidenceScore: r.confidence_score,
-        technologies:    r.skills_json,
+        technologies:    mergeTechnologies(r.skills_json, r.code_intelligence_json),
         summary:         r.summary_json?.text,
         whatItDoes:      r.summary_json?.what_it_does,
         highlights:      r.summary_json?.highlights,
@@ -193,6 +267,7 @@ router.get('/public/:slug', async (req, res) => {
 
     const narrative = portfolio.content_json?.narrative || {};
     const profile   = portfolio.content_json?.profile   || {};
+    const linkedin  = portfolio.content_json?.linkedin  || null;
 
     return res.status(200).json({
       success: true,
@@ -206,6 +281,7 @@ router.get('/public/:slug', async (req, res) => {
         engineeringStrengths: narrative.engineering_strengths || [],
         careerSignals:        narrative.career_signals        || [],
         profile,
+        linkedin,
         publishedAt: portfolio.published_at,
         repos,
       },
@@ -348,6 +424,7 @@ router.get('/:id', authMiddleware, async (req, res) => {
         narrative:       portfolio.content_json?.narrative || null,
         narrativeStatus: portfolio.content_json?.narrative_status || null,
         profile:         portfolio.content_json?.profile   || {},
+        linkedin:        portfolio.content_json?.linkedin  || null,
         publishedAt:     portfolio.published_at,
         createdAt:       portfolio.created_at,
         updatedAt:       portfolio.updated_at,
@@ -425,14 +502,12 @@ router.post('/:id/generate-narrative', authMiddleware, async (req, res) => {
     );
 
     // Build input array for the narrative service.
-    // Prioritises deep analysis intelligence when available; falls back to legacy analysis.
+    // Only pass structured capability signals — no raw project summaries or descriptions
+    // that could leak into the About Me narrative.
     const analyses = reposResult.rows.map(r => ({
       repoName:     r.name,
-      description:  r.description,
-      technologies: r.skills_json || [],
-      summary:      r.summary_json?.text || '',
       whatItDoes:   r.summary_json?.what_it_does || '',
-      highlights:   r.summary_json?.highlights || {},
+      technologies: r.skills_json || [],
       inference:    r.inference_json    || null,
       intelligence: r.intelligence_json || null,
     }));
@@ -615,6 +690,170 @@ router.patch('/:id/publish', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('[portfolios] publish error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to publish portfolio.' } });
+  }
+});
+
+// POST /api/portfolios/:id/generate-project-descriptions
+// Generates rich 2-4 paragraph descriptions from deep analysis data for each repo in the portfolio.
+router.post('/:id/generate-project-descriptions', authMiddleware, async (req, res) => {
+  const { id: userId } = req.user;
+  const { id } = req.params;
+
+  try {
+    const portfolioResult = await pool.query(
+      `SELECT id, content_json FROM portfolios WHERE id = $1 AND user_id = $2`,
+      [id, userId]
+    );
+    if (!portfolioResult.rows[0]) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Portfolio not found.' } });
+    }
+
+    const portfolio      = portfolioResult.rows[0];
+    const repositoryIds  = portfolio.content_json?.repository_ids || [];
+    const existingProjects = portfolio.content_json?.narrative?.projects || [];
+
+    const reposResult = await pool.query(
+      `SELECT r.id AS repo_id, r.name,
+              a.summary_json,
+              da.intelligence_json,
+              da.code_intelligence_json,
+              da.inference_json
+       FROM repositories r
+       LEFT JOIN LATERAL (
+         SELECT summary_json FROM analyses
+         WHERE repository_id = r.id AND status = 'completed'
+         ORDER BY created_at DESC LIMIT 1
+       ) a ON true
+       LEFT JOIN LATERAL (
+         SELECT intelligence_json, code_intelligence_json, inference_json
+         FROM deep_analyses
+         WHERE repository_id = r.id AND status IN ('completed', 'partial')
+         ORDER BY completed_at DESC LIMIT 1
+       ) da ON true
+       WHERE r.id = ANY($1::uuid[]) AND r.user_id = $2`,
+      [repositoryIds, userId]
+    );
+
+    const updatedProjects = await Promise.all(reposResult.rows.map(async r => {
+      const existing  = existingProjects.find(p => p.repoName === r.name) || { repoName: r.name };
+      const intel     = r.intelligence_json;
+      const codeIntel = r.code_intelligence_json;
+      const inference = r.inference_json;
+
+      const projectData = {
+        repoName:                 r.name,
+        hookSentence:             intel?.portfolioNarrative?.hookSentence || '',
+        whatItDoes:               r.summary_json?.what_it_does || '',
+        probableDomain:           intel?.businessValue?.probableDomain || '',
+        operationalCapabilities:  intel?.businessValue?.operationalCapabilities || [],
+        technologies:             codeIntel?.technologies || [],
+        technicalDifferentiation: intel?.portfolioNarrative?.technicalDifferentiation || [],
+        impactStatements:         intel?.resume?.impactStatements || [],
+        patternsInferred:         inference?.patternsInferred || [],
+      };
+
+      let description = '';
+      const hasSignals = projectData.hookSentence || projectData.whatItDoes || projectData.technologies.length > 0;
+      if (hasSignals) {
+        try {
+          description = await generateProjectDescription(projectData);
+        } catch (err) {
+          console.error(`[generate-project-descriptions] ${r.name}:`, err.message);
+        }
+      }
+
+      return { ...existing, description };
+    }));
+
+    const updatedNarrative = {
+      ...(portfolio.content_json?.narrative || {}),
+      projects: updatedProjects,
+    };
+    const updatedContent = { ...portfolio.content_json, narrative: updatedNarrative };
+
+    await pool.query(
+      `UPDATE portfolios SET content_json = $1, updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(updatedContent), id]
+    );
+
+    console.log(`[portfolios] project descriptions generated for portfolio ${id}`);
+    return res.status(200).json({ success: true, data: { projects: updatedProjects } });
+  } catch (err) {
+    console.error('[portfolios] generate-project-descriptions error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to generate project descriptions.' } });
+  }
+});
+
+// POST /api/portfolios/:id/linkedin-pdf — upload LinkedIn PDF, extract and store experience
+router.post('/:id/linkedin-pdf', authMiddleware, upload.single('pdf'), async (req, res) => {
+  const { id: userId } = req.user;
+  const { id } = req.params;
+
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: { code: 'NO_FILE', message: 'No PDF file uploaded.' } });
+  }
+
+  // Accept application/pdf and application/octet-stream (some OS/browsers send the latter for PDFs)
+  const allowedTypes = ['application/pdf', 'application/octet-stream', 'binary/octet-stream'];
+  const originalName = req.file.originalname?.toLowerCase() || '';
+  const isPdf = allowedTypes.includes(req.file.mimetype) || originalName.endsWith('.pdf');
+  if (!isPdf) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_FILE', message: 'Please upload a PDF file.' } });
+  }
+
+  // ── Step 1: Load portfolio ──────────────────────────────────────────────────
+  let portfolioRow;
+  try {
+    const result = await pool.query(
+      `SELECT id, content_json FROM portfolios WHERE id = $1 AND user_id = $2`,
+      [id, userId]
+    );
+    if (!result.rows[0]) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Portfolio not found.' } });
+    }
+    portfolioRow = result.rows[0];
+  } catch (err) {
+    console.error('[linkedin-pdf] DB load error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Database error loading portfolio.' } });
+  }
+
+  // ── Step 2: Parse PDF text ─────────────────────────────────────────────────
+  let rawText = '';
+  try {
+    console.log('[linkedin-pdf] parsing PDF — size:', req.file.size, 'bytes, mimetype:', req.file.mimetype);
+    rawText = (await extractPdfText(req.file.buffer)).trim();
+    console.log('[linkedin-pdf] extracted text length:', rawText.length, 'chars');
+  } catch (err) {
+    console.error('[linkedin-pdf] pdf extraction error:', err.message);
+    return res.status(422).json({ success: false, error: { code: 'PARSE_FAILED', message: 'Could not read the PDF. Make sure you are uploading a LinkedIn "Save to PDF" file, not the data export ZIP.' } });
+  }
+
+  if (rawText.length < 50) {
+    return res.status(422).json({ success: false, error: { code: 'EMPTY_PDF', message: 'No readable text found in this PDF. LinkedIn "Save to PDF" (from your profile page) works best. Data export ZIPs are not supported.' } });
+  }
+
+  // ── Step 3: Extract structured data with OpenAI ────────────────────────────
+  let extracted;
+  try {
+    extracted = await extractLinkedInProfile(rawText);
+    console.log('[linkedin-pdf] OpenAI extraction done — experience:', extracted?.experience?.length ?? 0, 'entries');
+  } catch (err) {
+    console.error('[linkedin-pdf] OpenAI extraction error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'EXTRACTION_FAILED', message: 'AI extraction failed. Please try again in a moment.' } });
+  }
+
+  // ── Step 4: Save to portfolio ──────────────────────────────────────────────
+  try {
+    const updated = { ...portfolioRow.content_json, linkedin: extracted };
+    await pool.query(
+      `UPDATE portfolios SET content_json = $1, updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(updated), id]
+    );
+    console.log(`[linkedin-pdf] saved for portfolio ${id}`);
+    return res.status(200).json({ success: true, data: extracted });
+  } catch (err) {
+    console.error('[linkedin-pdf] DB save error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'SAVE_FAILED', message: 'Extraction succeeded but failed to save. Please try again.' } });
   }
 });
 

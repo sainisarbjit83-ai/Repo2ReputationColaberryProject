@@ -74,24 +74,66 @@ async function analyzeRepository(repo) {
 
 const NARRATIVE_SYSTEM_PROMPT = `You are a technical portfolio writer creating first-person developer portfolio content.
 
+ABSOLUTE RULES — THESE OVERRIDE EVERYTHING ELSE:
+1. DO NOT mention any repository names anywhere in headline or narrative.
+2. DO NOT mention any project names anywhere in headline or narrative.
+3. DO NOT describe individual projects in the narrative.
+4. Summarize capabilities ACROSS ALL repositories — write about the developer, not the projects.
+5. The narrative must read like a LinkedIn About section or professional developer bio.
+6. Narrative maximum: 250 words. Reject your own output if it exceeds this.
+
 Write exclusively in first person. Never use "This developer...", "The candidate...", or any third-person phrasing.
 
-Each repository in the input includes deep analysis intelligence: Project Hook, Project Narrative, Resume Highlights, Business Domain, and Technical Differentiation. Use this as primary source of truth. Legacy summary text is a fallback only.
+The repository data is background research only. Extract what the developer knows and can do — then discard the project names and write about the person.
 
-Rules:
-- headline: one first-person sentence naming what was actually built and the engineering domains it spans (e.g. "I build AI orchestration systems, backend APIs, and full-stack applications using TypeScript, OpenAI, and Node.js.")
-- narrative: 3-4 paragraphs in first person: (1) what I build and what problems I solve using concrete project examples, (2) technical depth citing specific technologies and architecture patterns from the data, (3) project-specific highlights drawing from the provided hook sentences and impact statements, (4) what I bring to a team and what I'm looking to work on next
-- projects one_liners: use the provided "Project Hook" sentence directly — do NOT write generic technology descriptions
-- top_skills: deduplicate across repos, rank by confidence (highest first), max 10
-- engineering_strengths: 4-8 specific engineering strengths actually evidenced by the analysis (e.g. "AI Integration", "Backend API Development", "System Architecture", "Database Design") — only include what is clearly present in the data
-- career_signals: estimate strength score 1-5 for each applicable domain based on the analysis evidence — only include domains with score >= 2: AI Engineering, Backend Engineering, System Design, Frontend Engineering, DevOps, Security, Data Engineering
-- NEVER use: "strong software engineering skills", "demonstrates strong", "passionate about", "solid foundation"
-- ALWAYS ground every claim in the provided Project Hooks, Resume Highlights, and Technical Differentiation
+=== HEADLINE RULES ===
+- A concise professional title, NOT a sentence
+- Maximum 60–80 characters
+- LinkedIn-style title case, pipe separators where appropriate
+- Role type and technology domains only
+- NEVER: project names, repo names, "I build...", first-person sentences
+- Examples:
+    "Full-Stack Engineer | AI, APIs & Automation"
+    "AI & Full-Stack Developer"
+    "Backend & AI Engineer | Python, Node.js & React"
+    "Software Engineer | AI-Powered Applications"
+
+=== NARRATIVE RULES ===
+- 150–250 words. Hard cap: 250 words.
+- 2–3 paragraphs structured as:
+    Paragraph 1: who the developer is, specialization, engineering focus
+    Paragraph 2: technology stack and problem types — synthesized across all work, no per-project breakdown
+    Paragraph 3 (optional): engineering approach, professional goals
+- NEVER include:
+    * Repository names or GitHub project names
+    * "In [project]..." / "This repository..." / "Project X demonstrates..."
+    * Architecture layer counts ("3-layer", "5-phase", "cross-phase")
+    * Analysis terminology ("inference engine", "Phase 5", "maturity score", "confidence score")
+    * Stars, forks, or any repository metrics
+    * Per-project walkthroughs
+
+=== CORRECT NARRATIVE EXAMPLE ===
+"I am a software engineer with hands-on experience building AI-powered applications, production backend APIs, and full-stack systems. I specialize in designing and shipping end-to-end software solutions that integrate large language models, automate workflows, and solve real business problems at scale.
+
+My technical work spans backend engineering with Node.js and Python, frontend development with React and TypeScript, AI integration using OpenAI and LLM APIs, database design with PostgreSQL, and containerized deployment with Docker and cloud platforms. I apply engineering practices including RESTful API design, asynchronous processing, data modeling, and CI/CD pipeline management to build systems that are reliable and maintainable in production.
+
+I approach software development by focusing on clean architecture, thoughtful system design, and practical problem-solving. I am comfortable working across the full stack — from database schema to frontend UI — and I take ownership of the entire software lifecycle from design through deployment. I am looking to contribute to teams building ambitious products where engineering quality and product impact matter."
+
+=== PROJECT ONE-LINERS ===
+- Use the provided "Project Hook" sentence directly — do NOT write generic descriptions
+
+=== SKILLS AND SIGNALS ===
+- top_skills: deduplicate across repos, rank by confidence descending, max 10
+- engineering_strengths: 4–8 strengths evidenced by the analysis — only include what is clearly present
+- career_signals: score 1–5 per domain, only include score >= 2: AI Engineering, Backend Engineering, System Design, Frontend Engineering, DevOps, Security, Data Engineering
+
+PROHIBITED PHRASES (reject if present):
+"strong software engineering skills" / "demonstrates strong" / "passionate about" / "solid foundation" / any repo or project name in headline or narrative
 
 Return ONLY valid JSON with this exact structure:
 {
-  "headline": "First-person headline naming actual domains and technologies built.",
-  "narrative": "3-4 paragraph first-person bio grounded in the specific project data provided.",
+  "headline": "Concise LinkedIn-style professional title, 60–80 chars max, NOT a sentence.",
+  "narrative": "2–3 paragraph first-person About Me. Developer-focused. No repo or project names. 150–250 words.",
   "top_skills": [
     { "name": "React", "category": "Frontend", "confidence": 0.94 }
   ],
@@ -106,89 +148,95 @@ Return ONLY valid JSON with this exact structure:
 }`;
 
 function buildNarrativeUserPrompt(analyses) {
-  const lines = s => (Array.isArray(s) ? s : []).map(x => `  - ${x}`).join('\n') || '  - None';
+  const bulletList = arr => (Array.isArray(arr) ? arr : []).map(x => `  - ${x}`).join('\n') || '  - None';
 
-  const sections = analyses.map((a, i) => {
-    const intel = a.intelligence;         // deep analysis Phase 5 — may be null
+  // Build a scrubber that strips every known repo name from a string.
+  // Intelligence data was generated with project context and may embed repo names.
+  const repoNames = analyses.map(a => a.repoName).filter(Boolean);
+  function scrub(text) {
+    if (!text || typeof text !== 'string') return text;
+    let out = text;
+    repoNames.forEach(name => {
+      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      out = out.replace(new RegExp(escaped, 'gi'), 'this project');
+    });
+    return out;
+  }
+  const scrubList = arr => (Array.isArray(arr) ? arr : []).map(scrub);
+
+  // ── Aggregate capability signals — repo names scrubbed, none in this section ─
+
+  const techMap = new Map();
+  analyses.forEach(a => {
+    (a.technologies || []).forEach(t => {
+      const existing = techMap.get(t.name);
+      if (!existing || existing.confidence < t.confidence) techMap.set(t.name, t);
+    });
+  });
+  const techList = [...techMap.values()]
+    .sort((a, b) => b.confidence - a.confidence)
+    .map(t => `  - ${t.name} (${t.category})`).join('\n') || '  - None detected';
+
+  const strengthSet = new Set();
+  const impactList  = [];
+  const domainSet   = new Set();
+  const levelSet    = new Set();
+  const roleSet     = new Set();
+  const capList     = [];
+
+  analyses.forEach(a => {
+    const intel = a.intelligence;
     const pn    = intel?.portfolioNarrative;
     const bv    = intel?.businessValue;
     const res   = intel?.resume;
 
-    // ── Project identity ──────────────────────────────────────────────────────
-    const hook = pn?.hookSentence
-              || a.whatItDoes
-              || a.description
-              || 'No description available';
+    scrubList(pn?.technicalDifferentiation || []).forEach(s => strengthSet.add(s));
+    scrubList(a.inference?.strengths || []).forEach(s => strengthSet.add(s));
+    scrubList(res?.impactStatements || []).forEach(s => impactList.push(s));
+    scrubList(bv?.operationalCapabilities || []).slice(0, 3).forEach(c => capList.push(c));
 
-    let section = `Repository ${i + 1}: ${a.repoName}`;
-    section += `\nProject Hook: ${hook}`;
-
-    // ── Deep narrative (use intelligence story if available) ──────────────────
-    if (pn?.story) {
-      section += `\nProject Narrative: ${pn.story}`;
-    } else if (a.summary) {
-      section += `\nSummary: ${a.summary}`;
-    }
-
-    if (pn?.projectImpact) {
-      section += `\nProject Impact: ${pn.projectImpact}`;
-    }
-
-    // ── Technical differentiation (specific, non-generic signals) ────────────
-    if (pn?.technicalDifferentiation?.length > 0) {
-      section += `\nTechnical Differentiation:\n${lines(pn.technicalDifferentiation)}`;
-    }
-
-    // ── Resume highlights (concrete, ATS-ready bullets) ───────────────────────
-    if (res?.bulletPoints?.length > 0) {
-      section += `\nResume Highlights:\n${lines(res.bulletPoints)}`;
-    }
-    if (res?.impactStatements?.length > 0) {
-      section += `\nImpact Statements:\n${lines(res.impactStatements)}`;
-    }
-    if (res?.suggestedTitle) {
-      section += `\nSuggested Role Title: ${res.suggestedTitle}`;
-    }
-
-    // ── Business value ────────────────────────────────────────────────────────
-    if (bv?.probableDomain) {
-      section += `\nBusiness Domain: ${bv.probableDomain}`;
-    }
-    if (bv?.userValue) {
-      section += `\nUser Value: ${bv.userValue}`;
-    }
-    if (bv?.operationalCapabilities?.length > 0) {
-      section += `\nOperational Capabilities:\n${lines(bv.operationalCapabilities.slice(0, 5))}`;
-    }
-
-    // ── Technologies ──────────────────────────────────────────────────────────
-    const techs = (a.technologies || [])
-      .map(t => `  - ${t.name} (${t.category}, confidence: ${t.confidence})`)
-      .join('\n');
-    section += `\nTechnologies:\n${techs || '  - None detected'}`;
-
-    // ── Legacy highlights fallback (only when no deep intelligence) ───────────
-    if (!intel && a.highlights?.strengths) {
-      section += `\nStrengths: ${a.highlights.strengths}`;
-    }
-
-    // ── Inference engine output (Phase 6 cross-phase synthesis) ──────────────
-    if (a.inference) {
-      const assessment    = a.inference.overallAssessment || {};
-      const strengthLines = lines(a.inference.strengths);
-      section += `\nDeep Analysis (cross-phase structural evidence):`;
-      section += `\n  Engineering level: ${assessment.engineeringLevel || 'unknown'}`;
-      section += `\n  Portfolio strength: ${assessment.portfolioStrength || 'unknown'}`;
-      section += `\n  Project maturity: ${assessment.projectMaturity || 'unknown'}`;
-      section += `\n  Deployment readiness: ${assessment.deploymentReadiness || 'unknown'}`;
-      section += `\n  Confidence score: ${a.inference.confidence?.overall ?? 'unknown'}`;
-      section += `\n  Confirmed architectural strengths:\n${strengthLines}`;
-    }
-
-    return section;
+    if (bv?.probableDomain) domainSet.add(bv.probableDomain);
+    if (a.inference?.overallAssessment?.engineeringLevel) levelSet.add(a.inference.overallAssessment.engineeringLevel);
+    if (res?.suggestedTitle) roleSet.add(res.suggestedTitle);
   });
 
-  return sections.join('\n\n---\n\n');
+  const narrativeContext = `=== DEVELOPER CAPABILITY PROFILE ===
+This section contains NO repository names. Use ONLY this section to write the "headline" and "narrative" fields.
+Synthesize these signals into a cohesive first-person developer bio. Do NOT describe individual projects.
+
+Core Technologies:
+${techList}
+
+Engineering Strengths:
+${bulletList([...strengthSet].slice(0, 15))}
+
+Role Signals:
+${bulletList([...roleSet])}
+
+Business Domains:
+${bulletList([...domainSet])}
+
+Engineering Level:
+${bulletList([...levelSet])}
+
+Impact Signals:
+${bulletList(impactList.slice(0, 10))}
+
+Operational Capabilities:
+${bulletList(capList.slice(0, 10))}`;
+
+  // ── Per-project data — repo names present here for the "projects" array ONLY ─
+  const projectRows = analyses.map((a, i) => {
+    const hook = a.intelligence?.portfolioNarrative?.hookSentence
+              || a.whatItDoes
+              || 'No description available';
+    return `  Project ${i + 1}: repoName="${a.repoName}" | oneLiner="${hook}"`;
+  }).join('\n');
+
+  const projectContext = `=== PROJECT LIST (populate the "projects" array ONLY — do NOT use repoName values in headline or narrative) ===
+${projectRows}`;
+
+  return `${narrativeContext}\n\n${projectContext}`;
 }
 
 async function generatePortfolioNarrative(analyses) {
@@ -267,4 +315,104 @@ async function generateReadme(repo, analysis) {
   return response.choices[0].message.content.trim();
 }
 
-module.exports = { analyzeRepository, generatePortfolioNarrative, generateReadme };
+const LINKEDIN_EXTRACT_PROMPT = `You are a resume parser. Extract structured professional data from the LinkedIn PDF text provided.
+
+Rules:
+- Only extract what is clearly present in the text — do not invent or assume details
+- experience bullets: limit to the 3 most impactful per role
+- skills: limit to 15 most relevant
+- If a section is absent, use an empty array []
+
+Return ONLY valid JSON with this exact structure:
+{
+  "name": "Full name or null",
+  "headline": "Professional headline or null",
+  "location": "Location or null",
+  "summary": "About/summary section text or null",
+  "experience": [
+    {
+      "company": "Company name",
+      "role": "Job title",
+      "startDate": "Month Year or Year",
+      "endDate": "Month Year or Year or Present",
+      "duration": "e.g. 1 yr 6 mos or null",
+      "location": "Location or null",
+      "bullets": ["Achievement or responsibility sentence"]
+    }
+  ],
+  "education": [
+    {
+      "institution": "School or university name",
+      "degree": "Degree and field of study",
+      "startYear": "Year or null",
+      "endYear": "Year or null"
+    }
+  ],
+  "skills": ["skill1", "skill2"]
+}`;
+
+async function extractLinkedInProfile(rawText) {
+  // Truncate to ~6000 chars to stay within token limits — LinkedIn PDFs are typically 2–5K chars
+  const text = rawText.slice(0, 6000);
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: LINKEDIN_EXTRACT_PROMPT },
+      { role: 'user',   content: text },
+    ],
+    temperature: 0.1,
+    max_tokens: 1500,
+  });
+  return JSON.parse(response.choices[0].message.content);
+}
+
+const PROJECT_DESCRIPTION_SYSTEM_PROMPT = `You are a technical writer creating a professional project description for a developer portfolio.
+
+Based on the structured signals provided, write exactly 2–4 prose paragraphs:
+- Paragraph 1: What the project does and its primary business value
+- Paragraph 2: Engineering architecture — key technical decisions, patterns, complexity
+- Paragraph 3: Key accomplishments, standout capabilities, or measurable impact
+- Paragraph 4 (only if there is meaningful additional context): Technology stack or deployment highlights
+
+Rules:
+- Write in third person ("This system..." / "The platform..." / "The application...")
+- Name actual technologies, patterns, and capabilities from the input — do not invent details
+- Each paragraph: 2–4 sentences
+- No bullet points, no section headings — prose only
+- Do not open the first sentence with the project name
+
+Return ONLY valid JSON:
+{ "description": "Paragraph 1.\\n\\nParagraph 2.\\n\\nParagraph 3." }`;
+
+async function generateProjectDescription({
+  repoName, hookSentence, whatItDoes, probableDomain,
+  operationalCapabilities, technologies, technicalDifferentiation,
+  impactStatements, patternsInferred,
+}) {
+  const input = [
+    `Project: ${repoName}`,
+    (hookSentence || whatItDoes) ? `What it does: ${hookSentence || whatItDoes}` : null,
+    probableDomain             ? `Business domain: ${probableDomain}` : null,
+    operationalCapabilities?.length ? `Capabilities: ${operationalCapabilities.slice(0, 5).join('; ')}` : null,
+    technologies?.length       ? `Technologies: ${technologies.slice(0, 12).join(', ')}` : null,
+    technicalDifferentiation?.length ? `Technical strengths: ${technicalDifferentiation.slice(0, 4).join('; ')}` : null,
+    impactStatements?.length   ? `Impact: ${impactStatements.slice(0, 4).join('; ')}` : null,
+    patternsInferred?.length   ? `Engineering patterns: ${patternsInferred.slice(0, 4).join('; ')}` : null,
+  ].filter(Boolean).join('\n');
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: PROJECT_DESCRIPTION_SYSTEM_PROMPT },
+      { role: 'user',   content: input },
+    ],
+    temperature: 0.4,
+    max_tokens: 600,
+  });
+  const raw = JSON.parse(response.choices[0].message.content);
+  return typeof raw.description === 'string' ? raw.description : '';
+}
+
+module.exports = { analyzeRepository, generatePortfolioNarrative, generateReadme, extractLinkedInProfile, generateProjectDescription };

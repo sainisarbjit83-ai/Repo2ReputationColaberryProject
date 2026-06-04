@@ -81,6 +81,39 @@ function EditorSection({ number, title, description, defaultOpen = true, childre
   )
 }
 
+// ─── Years-of-experience helpers (LinkedIn / profile data only) ───────────────
+function parseExpDate(str) {
+  if (!str || typeof str !== 'string') return null
+  str = str.trim()
+  if (/present|current|now/i.test(str)) return null
+  if (/^\d{4}$/.test(str)) return new Date(parseInt(str), 0, 1)
+  const months = { jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11 }
+  const m = str.match(/^([A-Za-z]+)\s+(\d{4})$/)
+  if (m) {
+    const mo = months[m[1].toLowerCase().slice(0, 3)]
+    if (mo !== undefined) return new Date(parseInt(m[2]), mo, 1)
+  }
+  const d = new Date(str)
+  return isNaN(d.getTime()) ? null : d
+}
+
+function getYearsExperience(linkedin, profile) {
+  const experiences = [
+    ...(linkedin?.experience || []),
+    ...(profile?.experience  || []),
+  ]
+  if (experiences.length === 0) return null
+  let earliest = null
+  for (const exp of experiences) {
+    const d = parseExpDate(exp.startDate || exp.start_date || exp.startYear || '')
+    if (d && (!earliest || d < earliest)) earliest = d
+  }
+  if (!earliest) return null
+  const years = Math.floor((Date.now() - earliest.getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+  if (years < 1) return null
+  return years === 1 ? '1+ Year' : `${years}+ Years`
+}
+
 // ─── Live portfolio mini-preview ─────────────────────────────────────────────
 const PREV_GRADS = [
   'linear-gradient(135deg,#667eea,#764ba2)',
@@ -98,10 +131,17 @@ const PREV_CATS = {
   Other:    { bg: '#f3f4f6', color: '#374151' },
 }
 
-function MiniPreview({ title, headline, narrative, topSkills, projects, repos, analysisMap, profile, engineeringStrengths }) {
-  const displayName = profile?.fullName || title || 'Your Portfolio'
+function MiniPreview({ headline, narrative, topSkills, projects, repos, analysisMap, profile, engineeringStrengths, linkedin }) {
+  const displayName = profile?.fullName || 'Your Portfolio'
   const displayHeadline = profile?.headline || headline
   const initials = displayName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
+
+  const aiRepoCount = repos.filter(r =>
+    (analysisMap[r.id]?.technologies || []).some(t =>
+      ['OpenAI', 'LangChain', 'Anthropic', 'LlamaIndex'].includes(t.name)
+    )
+  ).length
+  const yearsExp = getYearsExperience(linkedin, profile)
 
   return (
     <div style={{
@@ -146,9 +186,14 @@ function MiniPreview({ title, headline, narrative, topSkills, projects, repos, a
         {/* Stats */}
         <div style={{ display: 'flex', border: '1px solid #e5e7eb', borderRadius: '8px', overflow: 'hidden' }}>
           {[
-            { value: repos.length,          label: 'Repositories', icon: '📁' },
+            yearsExp
+              ? { value: yearsExp,      label: 'Years Experience',     icon: '📅' }
+              : aiRepoCount > 0
+                ? { value: aiRepoCount, label: 'AI Engineering',        icon: '🤖' }
+                : { value: '✓',         label: 'Professional Portfolio', icon: '💼' },
             { value: `${topSkills.length}+`, label: 'Core Technologies', icon: '⚙️' },
-            { value: projects.length,        label: 'Featured Projects', icon: '🚀' },
+            { value: projects.length,        label: 'Featured Projects',  icon: '🚀' },
+            ...(yearsExp && aiRepoCount > 0 ? [{ value: aiRepoCount, label: 'AI Systems Built', icon: '🤖' }] : []),
           ].map((s, i, arr) => (
             <div key={i} style={{
               flex: 1, padding: '8px 6px', textAlign: 'center',
@@ -324,6 +369,16 @@ function PortfolioBuilder({ onLogout }) {
     email: '', githubUrl: '', linkedinUrl: '', website: '',
   })
 
+  // Step 3 — LinkedIn PDF import
+  const [linkedinUploading, setLinkedinUploading] = useState(false)
+  const [linkedinData,      setLinkedinData]      = useState(null)
+  const [linkedinError,     setLinkedinError]     = useState(null)
+
+  // Step 3 — project descriptions
+  const [generatingDescs, setGeneratingDescs] = useState(false)
+  const [descsGenerated,  setDescsGenerated]  = useState(false)
+  const [descsError,      setDescsError]      = useState(null)
+
   // Step 4 — publish
   const [publishing, setPublishing] = useState(false)
   const [publicUrl, setPublicUrl]   = useState(null)
@@ -450,9 +505,12 @@ function PortfolioBuilder({ onLogout }) {
         pollRef.current = null
         setGenerating(false)
         setNarrativeData(pJson.data.narrative)
-        // Seed profile from any previously saved data
+        // Seed profile and linkedin from any previously saved data
         if (pJson.data.profile && Object.keys(pJson.data.profile).length > 0) {
           setProfile(p => ({ ...p, ...pJson.data.profile }))
+        }
+        if (pJson.data.linkedin) {
+          setLinkedinData(pJson.data.linkedin)
         }
       } else if (status === 'failed') {
         clearInterval(pollRef.current)
@@ -597,7 +655,48 @@ function PortfolioBuilder({ onLogout }) {
     } catch {
       // ignore — file picker stays in place
     }
-    e.target.value = '' // allow re-selecting same file
+    e.target.value = ''
+  }
+
+  async function handleLinkedinUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file || !portfolio) return
+    setLinkedinUploading(true)
+    setLinkedinError(null)
+
+    const formData = new FormData()
+    formData.append('pdf', file)
+
+    let res
+    try {
+      res = await authFetch(
+        `${BASE_URL}/api/portfolios/${portfolio.portfolioId}/linkedin-pdf`,
+        { method: 'POST', body: formData },
+        onLogout
+      )
+    } catch {
+      setLinkedinError('Network error — is the backend running?')
+      setLinkedinUploading(false)
+      return
+    }
+
+    setLinkedinUploading(false)
+    e.target.value = ''
+
+    if (!res) return
+    const json = await res.json()
+    if (json.success) {
+      setLinkedinData(json.data)
+      // Auto-fill profile fields from LinkedIn data if they are empty
+      setProfile(p => ({
+        ...p,
+        fullName: p.fullName || json.data.name      || '',
+        headline: p.headline || json.data.headline  || '',
+        location: p.location || json.data.location  || '',
+      }))
+    } else {
+      setLinkedinError(json.error?.message || 'Failed to process PDF.')
+    }
   }
 
   async function handleEditPortfolio() {
@@ -620,6 +719,32 @@ function PortfolioBuilder({ onLogout }) {
     }
     setNarrativeStatus('completed')
     setPublicUrl(null)   // return to Step 3 editor
+  }
+
+  async function handleGenerateDescriptions() {
+    if (!portfolio?.portfolioId || generatingDescs) return
+    setGeneratingDescs(true)
+    setDescsError(null)
+    setDescsGenerated(false)
+    try {
+      const res = await authFetch(
+        `${BASE_URL}/api/portfolios/${portfolio.portfolioId}/generate-project-descriptions`,
+        { method: 'POST' },
+        onLogout
+      )
+      if (!res) return
+      const json = await res.json()
+      if (json.success) {
+        setEditedProjects(json.data.projects)
+        setDescsGenerated(true)
+      } else {
+        setDescsError(json.error?.message || 'Failed to generate descriptions.')
+      }
+    } catch (err) {
+      setDescsError('Network error. Please try again.')
+    } finally {
+      setGeneratingDescs(false)
+    }
   }
 
   const analyzedRepos = importedRepos
@@ -795,6 +920,88 @@ function PortfolioBuilder({ onLogout }) {
               ))}
             </EditorSection>
 
+            {/* LinkedIn PDF Import */}
+            <EditorSection number="↑" title="Import from LinkedIn PDF" description="Upload your LinkedIn profile export to auto-fill Experience & Education" defaultOpen={!linkedinData}>
+
+              {!linkedinData ? (
+                <div>
+                  <p style={{ margin: '0 0 6px', fontSize: '12px', color: '#6b7280', lineHeight: 1.6 }}>
+                    Go to your <strong>LinkedIn profile page</strong> → click <strong>More…</strong> (below your photo) → <strong>Save to PDF</strong>.
+                  </p>
+                  <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#9ca3af', lineHeight: 1.5 }}>
+                    Do not use Settings → Data Privacy export — that gives a ZIP file, not a PDF.
+                  </p>
+                  <input
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    id="linkedin-pdf-upload"
+                    style={{ display: 'none' }}
+                    onChange={handleLinkedinUpload}
+                    disabled={linkedinUploading}
+                  />
+                  <label
+                    htmlFor="linkedin-pdf-upload"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '7px',
+                      padding: '9px 18px', borderRadius: '8px',
+                      border: '1px solid #0a66c2', backgroundColor: linkedinUploading ? '#f1f5f9' : '#e8f0fd',
+                      color: '#0a66c2', fontSize: '13px', fontWeight: '700',
+                      cursor: linkedinUploading ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {linkedinUploading ? '⏳ Extracting…' : '🔗 Upload LinkedIn PDF'}
+                  </label>
+                  {linkedinError && (
+                    <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#dc2626' }}>{linkedinError}</p>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  {/* Summary of what was extracted */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#166534' }}>
+                      ✓ LinkedIn profile imported
+                    </span>
+                    <button
+                      onClick={() => setLinkedinData(null)}
+                      style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '11px', cursor: 'pointer', padding: 0 }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                    {linkedinData.experience?.length > 0 && (
+                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#dbeafe', color: '#1e40af' }}>
+                        {linkedinData.experience.length} Experience {linkedinData.experience.length === 1 ? 'entry' : 'entries'}
+                      </span>
+                    )}
+                    {linkedinData.education?.length > 0 && (
+                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#dcfce7', color: '#166534' }}>
+                        {linkedinData.education.length} Education {linkedinData.education.length === 1 ? 'entry' : 'entries'}
+                      </span>
+                    )}
+                    {linkedinData.skills?.length > 0 && (
+                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#f3e8ff', color: '#6b21a8' }}>
+                        {linkedinData.skills.length} Skills
+                      </span>
+                    )}
+                  </div>
+                  {/* Experience preview */}
+                  {linkedinData.experience?.slice(0, 3).map((exp, i) => (
+                    <div key={i} style={{ padding: '8px 12px', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', marginBottom: '6px' }}>
+                      <p style={{ margin: '0 0 1px', fontSize: '12px', fontWeight: '700', color: '#111827' }}>{exp.role}</p>
+                      <p style={{ margin: 0, fontSize: '11px', color: '#6b7280' }}>{exp.company} · {exp.startDate} – {exp.endDate}</p>
+                    </div>
+                  ))}
+                  {(linkedinData.experience?.length ?? 0) > 3 && (
+                    <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#9ca3af' }}>
+                      +{linkedinData.experience.length - 3} more entries in public portfolio
+                    </p>
+                  )}
+                </div>
+              )}
+            </EditorSection>
+
             {/* 1. Headline */}
             <EditorSection number="1" title="Headline" description="Your professional headline used in the AI-generated narrative">
               <input
@@ -858,7 +1065,33 @@ function PortfolioBuilder({ onLogout }) {
 
             {/* 4. Project Summaries */}
             {editedProjects.length > 0 && (
-              <EditorSection number="4" title="Project Summaries" description="Edit the one-liner shown on each project card">
+              <EditorSection number="4" title="Project Summaries" description="Edit the one-liner shown on each project card. Generate AI descriptions for detailed project breakdowns.">
+                <div style={{ marginBottom: '14px' }}>
+                  <button
+                    onClick={handleGenerateDescriptions}
+                    disabled={generatingDescs}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: generatingDescs ? '#a5b4fc' : '#4361ee',
+                      color: '#fff', border: 'none', borderRadius: '8px',
+                      fontSize: '12px', fontWeight: '600',
+                      cursor: generatingDescs ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {generatingDescs ? 'Generating…' : 'Generate AI Descriptions'}
+                  </button>
+                  {descsGenerated && (
+                    <span style={{ marginLeft: '10px', fontSize: '11px', color: '#166534', fontWeight: '600' }}>
+                      ✓ Descriptions saved
+                    </span>
+                  )}
+                  {descsError && (
+                    <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#dc2626' }}>{descsError}</p>
+                  )}
+                  <p style={{ margin: '6px 0 0', fontSize: '11px', color: '#9ca3af', lineHeight: 1.4 }}>
+                    Uses deep analysis to write 2–4 paragraph descriptions. Visitors see them when they click a project.
+                  </p>
+                </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   {editedProjects.map((p, i) => (
                     <div key={i}>
@@ -1005,7 +1238,6 @@ function PortfolioBuilder({ onLogout }) {
           {/* Live preview */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
             <MiniPreview
-              title={portfolio?.title || ''}
               headline={editedHeadline}
               narrative={editedNarrative}
               topSkills={narrativeData.top_skills || []}
@@ -1014,6 +1246,7 @@ function PortfolioBuilder({ onLogout }) {
               analysisMap={analysisMap}
               profile={profile}
               engineeringStrengths={narrativeData.engineering_strengths || []}
+              linkedin={linkedinData}
             />
           </div>
         </div>
