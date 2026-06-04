@@ -4,7 +4,9 @@
 
 ### Transform GitHub repositories into recruiter-ready portfolios using AI-powered repository intelligence.
 
-![Hero Screenshot](docs/images/hero.png)
+![Repo2Reputation Workflow](docs/images/repo2reputation-workflow.png)
+
+> AI-powered workflow: GitHub Repository → Deep Analysis → Skill Inference → Portfolio Generation → Recruiter Search
 
 [![Node.js](https://img.shields.io/badge/Node.js-18+-339933?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org)
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
