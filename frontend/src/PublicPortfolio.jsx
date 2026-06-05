@@ -173,7 +173,7 @@ function Sidebar({ title, headline, topSkills, githubUsername, profile, engineer
       {/* Engineering Strengths */}
       {engineeringStrengths?.length > 0 && (
         <div>
-          <Label>Engineering Strengths</Label>
+          <Label>Engineering Skills</Label>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
             {engineeringStrengths.map((s, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: '#166534' }}>
@@ -283,18 +283,6 @@ function TopNav({ active, onTab, slug }) {
         </span>
       </div>
 
-      {/* Recruiter search link */}
-      <a
-        href="/search"
-        style={{
-          fontSize: '12px', fontWeight: '600', color: A,
-          textDecoration: 'none', padding: '5px 12px',
-          border: `1px solid ${BD}`, borderRadius: '7px',
-          backgroundColor: '#fff',
-        }}
-      >
-        Find more talent →
-      </a>
 
       {/* Tabs */}
       <div style={{ display: 'flex' }}>
@@ -379,8 +367,10 @@ function Section({ id, icon, title, children, right }) {
 
 // ─── Project card ─────────────────────────────────────────────────────────────
 function ProjectCard({ repo, oneLiner, aiDescription }) {
-  const [hov, setHov]           = useState(false)
-  const [expanded, setExpanded] = useState(false)
+  const [hov, setHov]                   = useState(false)
+  const [expanded, setExpanded]         = useState(false)
+  const [gifHov, setGifHov]             = useState(false)
+  const [lightboxOpen, setLightboxOpen] = useState(false)
   const techs  = (repo.analysis?.technologies || []).slice(0, 6)
   const topics = Array.isArray(repo.topics) ? repo.topics : (repo.topics ? JSON.parse(repo.topics) : [])
   const tags   = [...techs.map(t => t.name), ...topics].slice(0, 6)
@@ -399,57 +389,95 @@ function ProjectCard({ repo, oneLiner, aiDescription }) {
       onMouseEnter={() => setHov(true)}
       onMouseLeave={() => setHov(false)}
       style={{
-        display: 'flex', gap: '14px',
-        padding: '14px 16px', marginBottom: '14px',
+        display: 'flex', flexDirection: 'row',
+        padding: '0', marginBottom: '14px',
         border: `1px solid ${hov ? '#a5b4fc' : BD}`,
         borderRadius: '12px', backgroundColor: '#fff',
+        overflow: 'hidden',
         transition: 'border-color 0.2s, box-shadow 0.2s',
         boxShadow: hov ? '0 4px 16px rgba(67,97,238,0.1)' : '0 1px 3px rgba(0,0,0,0.04)',
       }}
     >
-      {/* Thumbnail — reduced width to give content more space */}
-      <div style={{
-        width: '88px', height: '60px', borderRadius: '8px', flexShrink: 0,
-        background: gradient(repo.name),
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        overflow: 'hidden',
-      }}>
-        {repo.gifUrl ? (
-          <img
-            src={repo.gifUrl}
-            alt={repo.name}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-            onError={e => { e.target.style.display = 'none' }}
-          />
-        ) : (
-          <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '10px', fontWeight: '600', textAlign: 'center', padding: '0 6px' }}>
-            {repo.name?.slice(0, 14)}
-          </span>
-        )}
-      </div>
+      {/* Media — left column, only shown when gifUrl exists */}
+      {repo.gifUrl && (
+        <div style={{
+          width: '38%', flexShrink: 0,
+          display: 'flex', flexDirection: 'column',
+          padding: '16px 12px 16px 16px',
+          borderRight: '1px solid #e5e7eb',
+          backgroundColor: '#fff',
+          justifyContent: 'flex-start',
+        }}>
+
+          {/* Header label */}
+          <p style={{
+            margin: '0 0 8px', fontSize: '10px', fontWeight: '700',
+            color: '#6b7280', textTransform: 'uppercase', letterSpacing: '1px',
+          }}>
+            🎬 Project Demo
+          </p>
+
+          {/* Browser frame */}
+          <div
+            onMouseEnter={() => setGifHov(true)}
+            onMouseLeave={() => setGifHov(false)}
+            onClick={() => setLightboxOpen(true)}
+            style={{
+              position: 'relative', borderRadius: '8px',
+              border: '1px solid #e5e7eb', overflow: 'hidden', cursor: 'pointer',
+              boxShadow: gifHov ? '0 8px 24px rgba(0,0,0,0.12)' : '0 2px 8px rgba(0,0,0,0.06)',
+              transform: gifHov ? 'scale(1.02)' : 'scale(1)',
+              transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+            }}
+          >
+            {/* Browser toolbar */}
+            <div style={{
+              height: '24px', backgroundColor: '#f3f4f6',
+              borderBottom: '1px solid #e5e7eb',
+              display: 'flex', alignItems: 'center', padding: '0 8px', gap: '5px',
+            }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#ef4444', display: 'inline-block' }} />
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#f59e0b', display: 'inline-block' }} />
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981', display: 'inline-block' }} />
+            </div>
+
+            {/* GIF */}
+            <img
+              src={repo.gifUrl}
+              alt={repo.name}
+              style={{ width: '100%', display: 'block', objectFit: 'contain' }}
+              onError={e => { e.target.style.display = 'none' }}
+            />
+
+          </div>
+        </div>
+      )}
 
       {/* Details */}
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ flex: 1, padding: '14px 16px', minWidth: 0 }}>
 
-        {/* 1. Title */}
-        <button
-          onClick={() => setExpanded(e => !e)}
+        {/* 1. Title — links to GitHub */}
+        <a
+          href={repo.fullName ? `https://github.com/${repo.fullName}` : '#'}
+          target="_blank"
+          rel="noreferrer"
           style={{
-            margin: '0 0 6px', padding: 0, border: 'none', background: 'none', cursor: 'pointer',
+            margin: '0 0 6px', padding: 0,
             fontSize: '15px', fontWeight: '700', color: T, textAlign: 'left',
             display: 'block', lineHeight: 1.3,
+            textDecoration: 'none',
             transition: 'color 0.15s',
           }}
           className="proj-link"
         >
           {formatRepoName(repo.name)}
-        </button>
+        </a>
 
         {/* 2. Summary (collapsed) or AI Analysis (expanded) */}
         {!expanded && shortDesc && (
           <p style={{
             margin: '0 0 8px', fontSize: '12px', color: TS, lineHeight: 1.7,
-            overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+            overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical',
           }}>
             {shortDesc}
           </p>
@@ -493,12 +521,27 @@ function ProjectCard({ repo, oneLiner, aiDescription }) {
           </div>
         )}
 
-        {/* 4. Bottom row: confidence score | vanity metrics (only if meaningful) | Read more */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {stars > 10 && <span style={{ fontSize: '11px', color: TM }}>☆ {stars}</span>}
-            {forks > 10 && <span style={{ fontSize: '11px', color: TM }}>⑂ {forks}</span>}
+        {/* 4. Stats row — always visible */}
+        {(stars > 0 || forks > 0 || repo.language || repo.updatedAt) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px', flexWrap: 'wrap' }}>
+            {stars > 0 && <span style={{ fontSize: '11px', color: TM }}>★ {stars}</span>}
+            {forks > 0 && <span style={{ fontSize: '11px', color: TM }}>⑂ {forks}</span>}
+            {repo.language && (
+              <span style={{ fontSize: '11px', color: TM, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#f59e0b', display: 'inline-block' }} />
+                {repo.language}
+              </span>
+            )}
+            {repo.updatedAt && (
+              <span style={{ fontSize: '11px', color: TM }}>
+                Updated {new Date(repo.updatedAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+              </span>
+            )}
           </div>
+        )}
+
+        {/* 5. Read more + View on GitHub CTA */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
           {hasReadMore && (
             <button
               onClick={() => setExpanded(e => !e)}
@@ -507,9 +550,58 @@ function ProjectCard({ repo, oneLiner, aiDescription }) {
               {expanded ? 'Show less ↑' : 'Read more ↓'}
             </button>
           )}
+          {repo.fullName && (
+            <a
+              href={`https://github.com/${repo.fullName}`}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                padding: '5px 12px', borderRadius: '6px', fontSize: '11px', fontWeight: '600',
+                border: `1px solid ${BD}`, color: T, backgroundColor: '#fff',
+                textDecoration: 'none',
+              }}
+            >
+              View on GitHub →
+            </a>
+          )}
         </div>
 
       </div>
+
+      {/* Lightbox modal */}
+      {lightboxOpen && (
+        <div
+          onClick={() => setLightboxOpen(false)}
+          style={{
+            position: 'fixed', inset: 0,
+            backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 1000,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div style={{ position: 'relative' }} onClick={e => e.stopPropagation()}>
+            <img
+              src={repo.gifUrl}
+              alt={repo.name}
+              style={{
+                maxWidth: '90vw', maxHeight: '85vh',
+                objectFit: 'contain', borderRadius: '12px', display: 'block',
+              }}
+            />
+            <button
+              onClick={() => setLightboxOpen(false)}
+              style={{
+                position: 'absolute', top: '-14px', right: '-14px',
+                width: '28px', height: '28px', borderRadius: '50%',
+                border: 'none', backgroundColor: '#fff', color: T,
+                fontWeight: '700', fontSize: '14px', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+              }}
+            >✕</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

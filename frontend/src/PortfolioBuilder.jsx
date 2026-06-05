@@ -1142,6 +1142,9 @@ function PortfolioBuilder({ onLogout }) {
                   )
                 })}
               </div>
+              <p style={{ margin: '8px 0 0', fontSize: '11px', color: '#9ca3af' }}>
+                ⚠️ Keep media files under 10 MB for best performance. Large files load slowly for recruiters.
+              </p>
               <button
                 onClick={handleSaveMedia}
                 disabled={savingMedia}
