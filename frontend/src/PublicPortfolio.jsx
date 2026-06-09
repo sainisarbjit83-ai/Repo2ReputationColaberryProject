@@ -88,7 +88,7 @@ function getYearsExperience(linkedin, profile) {
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-function Sidebar({ title, headline, topSkills, githubUsername, profile, engineeringStrengths, repoCount }) {
+function Sidebar({ title, headline, topSkills, githubUsername, profile, engineeringStrengths, careerSignals, repos, repoCount }) {
   const grouped     = groupByCategory(topSkills)
   const displayName = profile?.fullName || title || 'Developer'
   const displayHead = profile?.headline || headline
@@ -209,14 +209,34 @@ function Sidebar({ title, headline, topSkills, githubUsername, profile, engineer
         </div>
       )}
 
-      {/* Analysis trust signal */}
-      {repoCount > 0 && (
-        <div style={{ padding: '8px 12px', backgroundColor: '#eef2ff', borderRadius: '8px', border: '1px solid #a5b4fc' }}>
-          <p style={{ margin: 0, fontSize: '10px', color: '#4338ca', fontWeight: '600', textAlign: 'center' }}>
-            🤖 Generated from AI analysis of {repoCount} {repoCount === 1 ? 'repository' : 'repositories'}
-          </p>
-        </div>
-      )}
+      {/* AI Insights — per-repo technical strengths */}
+      {(() => {
+        const insights = (repos || [])
+          .filter(r => r.analysis?.highlights?.strengths)
+          .sort((a, b) => (b.analysis?.confidenceScore ?? 0) - (a.analysis?.confidenceScore ?? 0))
+          .slice(0, 3)
+          .map(r => r.analysis.highlights.strengths)
+        if (!insights.length) return null
+        return (
+          <div>
+            <Label icon="🤖">AI Insights</Label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {insights.map((s, i) => (
+                <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                  <span style={{
+                    width: '7px', height: '7px', borderRadius: '50%',
+                    backgroundColor: '#16a34a', flexShrink: 0, marginTop: '5px',
+                  }} />
+                  <p style={{ margin: 0, fontSize: '11px', color: TS, lineHeight: 1.65 }}>
+                    {s.trim()}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
     </aside>
   )
 }
@@ -380,6 +400,7 @@ function ProjectCard({ repo, oneLiner, aiDescription }) {
     ? aiDescription.split(/\n\n+/).filter(Boolean)
     : null
 
+  const collapseText = shortDesc
   const hasReadMore = aiDescription || shortDesc.length > 120
   const stars = repo.stars || 0
   const forks = repo.forks || 0
@@ -474,12 +495,12 @@ function ProjectCard({ repo, oneLiner, aiDescription }) {
         </a>
 
         {/* 2. Summary (collapsed) or AI Analysis (expanded) */}
-        {!expanded && shortDesc && (
+        {!expanded && collapseText && (
           <p style={{
             margin: '0 0 8px', fontSize: '12px', color: TS, lineHeight: 1.7,
             overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical',
           }}>
-            {shortDesc}
+            {collapseText}
           </p>
         )}
 
@@ -506,6 +527,7 @@ function ProjectCard({ repo, oneLiner, aiDescription }) {
                 {shortDesc}
               </p>
             ) : null}
+
           </div>
         )}
 
@@ -858,14 +880,16 @@ export default function PublicPortfolio({ slug }) {
           githubUsername={githubUsername}
           profile={profile}
           engineeringStrengths={engineeringStrengths}
+          careerSignals={careerSignals}
+          repos={repos}
           repoCount={repos.length}
         />
 
         {/* Main content */}
         <main id="main-content" ref={mainRef} style={{ flex: 1, padding: '20px 28px 32px', minWidth: 0, overflowY: 'auto' }}>
 
-          {/* ── About Me ───────────────────────────────────────────── */}
-          <Section id="overview" icon="👤" title="About Me">
+          {/* ── Professional Summary ───────────────────────────────── */}
+          <Section id="overview" icon="👤" title="Professional Summary">
             <SummaryText text={narrative || 'No summary available.'} />
 
             {/* Portfolio Highlights row */}
@@ -998,7 +1022,7 @@ export default function PublicPortfolio({ slug }) {
               </div>
               <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                 {(profile?.githubUrl || githubUsername) && (
-                  <a href={profile?.githubUrl || `https://github.com/${githubUsername}`} target="_blank" rel="noreferrer"
+                  <a href={githubUsername ? `https://github.com/${githubUsername}` : profile?.githubUrl} target="_blank" rel="noreferrer"
                     style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', border: `1px solid ${BD}`, color: T, backgroundColor: '#fff', textDecoration: 'none' }}>
                     🐙 GitHub
                   </a>

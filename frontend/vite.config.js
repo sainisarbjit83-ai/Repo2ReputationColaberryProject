@@ -7,4 +7,8 @@ export default defineConfig({
   server: {
     historyApiFallback: true,
   },
+  test: {
+    globals: true,
+    environment: 'node',
+  },
 })

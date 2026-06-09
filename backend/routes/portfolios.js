@@ -325,7 +325,9 @@ router.get('/public/:slug/pdf', async (req, res) => {
       [repositoryIds]
     );
 
-    const narrative = portfolio.content_json?.narrative || {};
+    const narrative      = portfolio.content_json?.narrative || {};
+    const profile        = portfolio.content_json?.profile   || {};
+    const linkedin       = portfolio.content_json?.linkedin  || {};
     const githubUsername = reposResult.rows.find(r => r.full_name)?.full_name?.split('/')?.[0] || null;
 
     const repos = reposResult.rows.map(r => ({
@@ -345,6 +347,9 @@ router.get('/public/:slug/pdf', async (req, res) => {
       projects:       narrative.projects   || [],
       repos,
       githubUsername,
+      profile,
+      experience:     linkedin.experience  || [],
+      education:      linkedin.education   || [],
     });
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -421,10 +426,11 @@ router.get('/:id', authMiddleware, async (req, res) => {
         slug:            portfolio.slug,
         status:          portfolio.status,
         visibility:      portfolio.visibility,
-        narrative:       portfolio.content_json?.narrative || null,
+        narrative:       portfolio.content_json?.narrative  || null,
         narrativeStatus: portfolio.content_json?.narrative_status || null,
-        profile:         portfolio.content_json?.profile   || {},
-        linkedin:        portfolio.content_json?.linkedin  || null,
+        profile:         portfolio.content_json?.profile    || {},
+        linkedin:        portfolio.content_json?.linkedin   || null,
+        repoMedia:       portfolio.content_json?.repo_media || {},
         publishedAt:     portfolio.published_at,
         createdAt:       portfolio.created_at,
         updatedAt:       portfolio.updated_at,

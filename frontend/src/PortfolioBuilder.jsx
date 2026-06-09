@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { authFetch, BASE_URL } from './api'
+import { githubToRaw, isSupportedMediaUrl } from './utils/mediaUrl'
 
 const POLL_MS = 3000
 
@@ -328,6 +329,51 @@ function resizeImageToBase64(file, maxSize = 200) {
     }
     reader.readAsDataURL(file)
   })
+}
+
+function MediaInput({ repoName, value, onChange }) {
+  const [imgError, setImgError] = useState(false)
+  const wasConverted = value && value.includes('raw.githubusercontent.com')
+  const isValid = isSupportedMediaUrl(value)
+
+  return (
+    <div>
+      <p style={{ margin: '0 0 5px', fontSize: '12px', fontWeight: '600', color: '#374151' }}>{repoName}</p>
+      <input
+        type="url"
+        placeholder="Paste GitHub Image/GIF URL"
+        value={value}
+        onChange={e => {
+          setImgError(false)
+          onChange(githubToRaw(e.target.value.trim()))
+        }}
+        style={{ width: '100%', padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px', color: '#374151', outline: 'none', boxSizing: 'border-box' }}
+      />
+      {wasConverted && (
+        <p style={{ margin: '4px 0 0', fontSize: '10px', color: '#16a34a', fontWeight: '500' }}>
+          ✓ Auto-converted to raw URL
+        </p>
+      )}
+      {value && !isValid && (
+        <p style={{ margin: '4px 0 0', fontSize: '10px', color: '#dc2626' }}>
+          Unsupported file type. Use .gif, .png, .jpg, .jpeg, or .webp
+        </p>
+      )}
+      {value && isValid && !imgError && (
+        <img
+          src={value}
+          alt="preview"
+          onError={() => setImgError(true)}
+          style={{ marginTop: '8px', maxWidth: '100%', maxHeight: '120px', borderRadius: '6px', border: '1px solid #e5e7eb', display: 'block', objectFit: 'contain' }}
+        />
+      )}
+      {value && isValid && imgError && (
+        <p style={{ margin: '4px 0 0', fontSize: '10px', color: '#f59e0b' }}>
+          ⚠️ Could not load preview. Check the URL is publicly accessible.
+        </p>
+      )}
+    </div>
+  )
 }
 
 function PortfolioBuilder({ onLogout }) {
@@ -717,6 +763,13 @@ function PortfolioBuilder({ onLogout }) {
     if (saved.profile && Object.keys(saved.profile).length > 0) {
       setProfile(p => ({ ...p, ...saved.profile }))
     }
+    if (saved.repoMedia) {
+      // Only restore entries that are valid media URLs — skips any accidentally saved text
+      const clean = Object.fromEntries(
+        Object.entries(saved.repoMedia).filter(([, v]) => isSupportedMediaUrl(v?.gifUrl))
+      )
+      setRepoMedia(clean)
+    }
     setNarrativeStatus('completed')
     setPublicUrl(null)   // return to Step 3 editor
   }
@@ -1103,7 +1156,7 @@ function PortfolioBuilder({ onLogout }) {
                           next[i] = { ...next[i], oneLiner: e.target.value }
                           setEditedProjects(next)
                         }}
-                        maxLength={200}
+                        maxLength={300}
                         style={{
                           width: '100%', padding: '12px 14px',
                           border: '1px solid #e5e7eb', borderRadius: '10px',
@@ -1114,7 +1167,7 @@ function PortfolioBuilder({ onLogout }) {
                         }}
                       />
                       <div style={{ textAlign: 'right', fontSize: '10px', color: '#c7c7c7', marginTop: '3px' }}>
-                        {(p.oneLiner || '').length} / 200
+                        {(p.oneLiner || '').length} / 300
                       </div>
                     </div>
                   ))}
@@ -1123,22 +1176,21 @@ function PortfolioBuilder({ onLogout }) {
             )}
 
             {/* 5. Project Media */}
-            <EditorSection number="5" title="Project Media" description="Optional GIF or image URL per project" defaultOpen={false}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <EditorSection number="5" title="Project Media" description="Paste a GitHub file URL — auto-converted to a displayable media URL" defaultOpen={false}>
+              <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#6b7280', lineHeight: 1.6 }}>
+                Paste a GitHub file URL. Repo2Reputation will automatically convert it into a displayable media URL.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {[...selected].map(repoId => {
                   const repo = importedRepos.find(r => r.id === repoId)
                   if (!repo) return null
                   return (
-                    <div key={repoId}>
-                      <p style={{ margin: '0 0 5px', fontSize: '12px', fontWeight: '600', color: '#374151' }}>{repo.name}</p>
-                      <input
-                        type="url"
-                        placeholder="https://i.imgur.com/..."
-                        value={repoMedia[repoId]?.gifUrl || ''}
-                        onChange={e => setRepoMedia(prev => ({ ...prev, [repoId]: { gifUrl: e.target.value.trim() } }))}
-                        style={{ width: '100%', padding: '10px 12px', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px', color: '#374151', outline: 'none', boxSizing: 'border-box' }}
-                      />
-                    </div>
+                    <MediaInput
+                      key={repoId}
+                      repoName={repo.name}
+                      value={repoMedia[repoId]?.gifUrl || ''}
+                      onChange={converted => setRepoMedia(prev => ({ ...prev, [repoId]: { gifUrl: converted } }))}
+                    />
                   )
                 })}
               </div>
