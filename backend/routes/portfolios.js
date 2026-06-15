@@ -312,8 +312,9 @@ router.get('/public/:slug/pdf', async (req, res) => {
     const repositoryIds = portfolio.content_json?.repository_ids || [];
 
     const reposResult = await pool.query(
-      `SELECT r.id AS repo_id, r.name, r.full_name,
-              a.skills_json, a.summary_json
+      `SELECT r.id AS repo_id, r.name, r.full_name, r.primary_language,
+              a.skills_json, a.summary_json,
+              da.intelligence_json, da.inference_json, da.code_intelligence_json
        FROM repositories r
        LEFT JOIN LATERAL (
          SELECT skills_json, summary_json
@@ -321,6 +322,12 @@ router.get('/public/:slug/pdf', async (req, res) => {
          WHERE repository_id = r.id AND status = 'completed'
          ORDER BY created_at DESC LIMIT 1
        ) a ON true
+       LEFT JOIN LATERAL (
+         SELECT intelligence_json, inference_json, code_intelligence_json
+         FROM deep_analyses
+         WHERE repository_id = r.id AND status IN ('completed', 'partial')
+         ORDER BY completed_at DESC LIMIT 1
+       ) da ON true
        WHERE r.id = ANY($1::uuid[])`,
       [repositoryIds]
     );
@@ -331,12 +338,16 @@ router.get('/public/:slug/pdf', async (req, res) => {
     const githubUsername = reposResult.rows.find(r => r.full_name)?.full_name?.split('/')?.[0] || null;
 
     const repos = reposResult.rows.map(r => ({
-      name: r.name,
-      fullName: r.full_name,
+      name:            r.name,
+      fullName:        r.full_name,
+      primaryLanguage: r.primary_language,
       analysis: r.skills_json ? {
         technologies: r.skills_json,
         whatItDoes:   r.summary_json?.what_it_does,
       } : null,
+      intelligence:     r.intelligence_json    || null,
+      inference:        r.inference_json       || null,
+      codeIntelligence: r.code_intelligence_json || null,
     }));
 
     const pdfBuffer = await generatePortfolioPdf({
@@ -345,6 +356,7 @@ router.get('/public/:slug/pdf', async (req, res) => {
       narrative:      narrative.narrative  || null,
       topSkills:      narrative.top_skills || [],
       projects:       narrative.projects   || [],
+      careerSignals:  narrative.career_signals || [],
       repos,
       githubUsername,
       profile,
