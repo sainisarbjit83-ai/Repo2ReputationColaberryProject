@@ -27,39 +27,49 @@ async function generatePortfolioPdf(data) {
 // ─── Lookup tables ────────────────────────────────────────────────────────────
 
 const TECH_CATEGORIES = {
+  // Backend frameworks & auth
   express: 'Backend',   fastify: 'Backend',   nestjs: 'Backend',
   graphql: 'Backend',   trpc: 'Backend',      koa: 'Backend',
   hono: 'Backend',      django: 'Backend',    flask: 'Backend',
   fastapi: 'Backend',   rails: 'Backend',     spring: 'Backend',
   jwt: 'Backend',       passport: 'Backend',  'next-auth': 'Backend',
+  'rest-routes': 'Backend',
   clerk: 'Backend',     'firebase-auth': 'Backend',
+  // Frontend
   react: 'Frontend',    nextjs: 'Frontend',   vue: 'Frontend',
   angular: 'Frontend',  svelte: 'Frontend',   tailwind: 'Frontend',
   redux: 'Frontend',    zustand: 'Frontend',  jotai: 'Frontend',
+  // Databases (raw storage only)
   postgresql: 'Databases', mysql: 'Databases',  mongodb: 'Databases',
-  redis: 'Databases',      prisma: 'Databases', drizzle: 'Databases',
-  mongoose: 'Databases',   sequelize: 'Databases', typeorm: 'Databases',
-  knex: 'Databases',       elasticsearch: 'Databases', dynamodb: 'Databases',
+  redis: 'Databases',      elasticsearch: 'Databases', dynamodb: 'Databases',
+  sqlite: 'Databases',
+  // ORM / data-access layers (separate from raw databases)
+  prisma: 'ORM',  drizzle: 'ORM',   mongoose: 'ORM',
+  sequelize: 'ORM', typeorm: 'ORM', knex: 'ORM',
+  // AI/ML
   openai: 'AI/ML',      anthropic: 'AI/ML',  langchain: 'AI/ML',
   llamaindex: 'AI/ML',  'vercel-ai-sdk': 'AI/ML', pinecone: 'AI/ML',
   weaviate: 'AI/ML',    chromadb: 'AI/ML',   embeddings: 'AI/ML',
   mistral: 'AI/ML',     cohere: 'AI/ML',     groq: 'AI/ML',
+  // DevOps
   docker: 'DevOps',     kubernetes: 'DevOps', 'github-actions': 'DevOps',
-  terraform: 'DevOps',  stripe: 'Integrations',
+  terraform: 'DevOps',
+  // Integrations
+  stripe: 'Integrations',
 };
 
 const TECH_LABELS = {
-  nextjs: 'Next.js',            'next-auth': 'NextAuth',
+  nextjs: 'Next.js',                'next-auth': 'NextAuth',
   'vercel-ai-sdk': 'Vercel AI SDK', 'github-actions': 'GitHub Actions',
   'firebase-auth': 'Firebase Auth', graphql: 'GraphQL',
-  trpc: 'tRPC',                 postgresql: 'PostgreSQL',
-  mongodb: 'MongoDB',           openai: 'OpenAI',
-  langchain: 'LangChain',       llamaindex: 'LlamaIndex',
-  chromadb: 'ChromaDB',         pinecone: 'Pinecone',
-  weaviate: 'Weaviate',         nestjs: 'NestJS',
-  tailwind: 'Tailwind CSS',     typeorm: 'TypeORM',
-  dynamodb: 'DynamoDB',         elasticsearch: 'Elasticsearch',
-  'vercel-ai-sdk': 'Vercel AI SDK',
+  trpc: 'tRPC',                     postgresql: 'PostgreSQL',
+  mongodb: 'MongoDB',               openai: 'OpenAI',
+  langchain: 'LangChain',           llamaindex: 'LlamaIndex',
+  chromadb: 'ChromaDB',             pinecone: 'Pinecone',
+  weaviate: 'Weaviate',             nestjs: 'NestJS',
+  tailwind: 'Tailwind CSS',         typeorm: 'TypeORM',
+  dynamodb: 'DynamoDB',             elasticsearch: 'Elasticsearch',
+  jwt: 'JWT',                       'rest-routes': 'REST Routing',
 };
 
 // Maps inference patternsInferred → human chip labels
@@ -77,9 +87,9 @@ const PATTERN_LABELS = {
   infrastructure_as_code_present:     'Infrastructure as Code',
 };
 
-// Maps code_intelligence architecturePatterns → human labels
+// Maps code_intelligence architecturePatterns → recruiter-friendly labels
 const CI_ARCH_LABELS = {
-  rest_api:                'RESTful API',
+  rest_api:                'REST API Architecture',
   graphql_api:             'GraphQL API',
   type_safe_api:           'Type-Safe API',
   enterprise_rest_api:     'Enterprise REST API',
@@ -89,8 +99,8 @@ const CI_ARCH_LABELS = {
   strategy_based_auth:     'Strategy-Based Auth',
   provider_based_auth:     'OAuth Authentication',
   custom_auth_middleware:  'Custom Auth Middleware',
-  orm:                     'ORM Data Access',
-  query_builder:           'Query Builder',
+  orm:                     'Database Persistence Layer',
+  query_builder:           'Programmatic Query Layer',
   document_database_odm:   'Document ODM',
   document_database:       'Document Database',
   relational_database:     'Relational Database',
@@ -102,14 +112,16 @@ const CI_ARCH_LABELS = {
   llm_integration:         'LLM Integration',
   llm_orchestration:       'LLM Orchestration',
   rag_framework:           'RAG Framework',
-  component_ui:            'Component-Based UI',
-  ssr_framework:           'Server-Side Rendering',
-  global_state_management: 'State Management',
-  utility_css_framework:   'Utility CSS',
-  containerization:        'Docker Containerization',
-  cicd_pipeline:           'CI/CD Pipeline',
-  infrastructure_as_code:  'Infrastructure as Code',
-  payment_processing:      'Payment Processing',
+  component_ui:            'Component-Driven Frontend',
+  ssr_framework:           'Server-Side Rendering (SSR)',
+  global_state_management: 'Global State Management',
+  utility_css_framework:   'Utility-First CSS',
+  containerization:        'Containerized Deployment',
+  container_orchestration: 'Container Orchestration',
+  cicd_pipeline:           'Automated CI/CD Pipeline',
+  infrastructure_as_code:  'Infrastructure Automation',
+  payment_processing:      'Payment Integration',
+  rest_routing:            'REST API Routing',
 };
 
 // Maps patternsInferred → target role string
@@ -137,14 +149,32 @@ const HIGHLIGHT_MAP = {
   scalable_service_architecture:    'Scalable System Design',
 };
 
-// ─── Helper: get all unique patternsInferred across repos ─────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function allPatterns(repos) {
   return [...new Set(repos.flatMap(r => r.inference?.patternsInferred || []))];
 }
 
-// ─── P0 fix: inferRoleTitle ───────────────────────────────────────────────────
-// Handles career_signals as { domain, score } objects OR legacy strings.
+function getEngLevel(repos) {
+  for (const r of repos) {
+    const lvl = r.inference?.overallAssessment?.engineeringLevel;
+    if (lvl) return lvl;
+  }
+  return null;
+}
+
+function getYearsExperience(experience) {
+  if (!Array.isArray(experience) || !experience.length) return null;
+  const parsedDates = experience
+    .map(e => e.startDate)
+    .filter(Boolean)
+    .map(d => new Date(d))
+    .filter(d => !isNaN(d.getTime()));
+  if (!parsedDates.length) return null;
+  const earliestMs = Math.min(...parsedDates.map(d => d.getTime()));
+  const years = Math.floor((Date.now() - earliestMs) / (1000 * 60 * 60 * 24 * 365));
+  return years > 0 ? years : null;
+}
 
 function inferRoleTitle(repos, careerSignals) {
   if (Array.isArray(careerSignals) && careerSignals.length) {
@@ -164,29 +194,25 @@ function inferRoleTitle(repos, careerSignals) {
   return null;
 }
 
-// ─── P1: Person-focused professional summary ─────────────────────────────────
+// ─── Professional Summary (4 sentences, person-focused, ATS-ready) ────────────
 
-function buildPersonSummary(repos) {
-  const patterns = allPatterns(repos);
+function buildPersonSummary(repos, experience) {
+  const patterns  = allPatterns(repos);
+  const engLevel  = getEngLevel(repos);
+  const years     = getYearsExperience(experience);
 
-  // Engineering level from first repo that has it
-  let engLevel = null;
-  for (const r of repos) {
-    const lvl = r.inference?.overallAssessment?.engineeringLevel;
-    if (lvl) { engLevel = lvl; break; }
-  }
   const levelLabel = engLevel === 'senior' ? 'Senior'
     : engLevel === 'mid'    ? 'Mid-Level'
     : engLevel === 'junior' ? 'Entry-Level'
     : null;
 
-  // Role from patternsInferred
+  // Role title from patterns
   let role = null;
   for (const [pattern, r] of Object.entries(ROLE_MAP)) {
     if (patterns.includes(pattern)) { role = r; break; }
   }
 
-  // Top 5 technologies across repos (deduplicated, categorized)
+  // Top 6-7 technologies across repos (deduplicated, known categories only)
   const seen = new Set();
   const topTechs = [];
   for (const repo of repos) {
@@ -196,93 +222,71 @@ function buildPersonSummary(repos) {
       if (seen.has(t) || !TECH_CATEGORIES[t]) continue;
       seen.add(t);
       topTechs.push(TECH_LABELS[t] || t.charAt(0).toUpperCase() + t.slice(1));
-      if (topTechs.length >= 5) break;
+      if (topTechs.length >= 7) break;
     }
-    if (topTechs.length >= 5) break;
+    if (topTechs.length >= 7) break;
   }
 
-  // Sentence 1: who they are + what they build
-  const titlePart = [levelLabel, role].filter(Boolean).join(' ');
-  const buildContext = (patterns.includes('ai_orchestrated_system') || patterns.includes('ai_integration_confirmed'))
-    ? 'AI-powered applications, scalable backend services, and production-grade cloud systems'
-    : patterns.includes('fullstack_architecture_confirmed')
-    ? 'full-stack web applications and scalable backend services'
-    : (patterns.includes('production_ready_backend') || patterns.includes('enterprise_backend_patterns'))
-    ? 'scalable backend services, production APIs, and enterprise systems'
-    : 'software applications and backend systems';
-
-  const s1 = titlePart
-    ? `${titlePart} with experience building ${buildContext}.`
-    : `Software engineer with experience building ${buildContext}.`;
-
-  // Sentence 2: core technologies
-  const s2 = topTechs.length
-    ? `Skilled in ${topTechs.join(', ')}.`
-    : null;
-
-  // Sentence 3: engineering signals
+  // 3-4 signal labels from patternsInferred for S3
   const signalLabels = patterns
     .filter(p => PATTERN_LABELS[p])
-    .map(p => PATTERN_LABELS[p])
-    .slice(0, 3);
-  const strengths = [...new Set(repos.flatMap(r => r.inference?.strengths || []))].slice(0, 1);
+    .map(p => PATTERN_LABELS[p].toLowerCase())
+    .slice(0, 4);
 
+  // S1 — Identity + years + scope
+  const titlePart = [levelLabel, role].filter(Boolean).join(' ') || 'Software Engineer';
+  const buildContext = patterns.includes('ai_orchestrated_system')
+    ? 'AI-powered applications, scalable backend platforms, and enterprise software'
+    : patterns.includes('ai_integration_confirmed')
+    ? 'AI-integrated applications, scalable backend services, and full-stack platforms'
+    : patterns.includes('fullstack_architecture_confirmed')
+    ? 'full-stack web applications, scalable backend services, and production systems'
+    : patterns.includes('enterprise_backend_patterns') || patterns.includes('production_ready_backend')
+    ? 'scalable backend systems, production APIs, and enterprise applications'
+    : 'software applications and backend systems';
+
+  const experiencePart = years ? ` with ${years}+ years of experience designing and delivering` : ' with experience designing and delivering';
+  const s1 = `${titlePart}${experiencePart} ${buildContext}.`;
+
+  // S2 — Core technologies + "modern cloud-native practices"
+  const techSuffix = topTechs.length > 0 ? ', and modern cloud-native development practices' : '';
+  const s2 = topTechs.length
+    ? `Skilled in ${topTechs.join(', ')}${techSuffix}.`
+    : null;
+
+  // S3 — Proven expertise from engineering signals
   const s3 = signalLabels.length
-    ? `Demonstrated expertise in ${signalLabels.join(', ').toLowerCase()}.`
-    : strengths.length
-    ? `${strengths[0]}.`
+    ? `Proven expertise in ${signalLabels.slice(0, 3).join(', ')}, and production-grade system design.`
     : null;
 
-  return [s1, s2, s3].filter(Boolean).join(' ') || null;
-}
+  // S4 — Closing passion sentence, only when AI signals are present
+  const hasAi = patterns.includes('ai_orchestrated_system') || patterns.includes('ai_integration_confirmed') || patterns.includes('retrieval_augmented_architecture');
+  const hasDomain = patterns.includes('strong_domain_separation') || patterns.includes('enterprise_backend_patterns');
 
-// ─── P2: Target Role section ──────────────────────────────────────────────────
-
-function buildTargetRoleHtml(repos, careerSignals) {
-  const role = inferRoleTitle(repos, careerSignals);
-
-  let engLevel = null;
-  for (const r of repos) {
-    const lvl = r.inference?.overallAssessment?.engineeringLevel;
-    if (lvl) { engLevel = lvl; break; }
-  }
-  const levelLabel = engLevel === 'senior' ? 'Senior'
-    : engLevel === 'mid'    ? 'Mid-Level'
-    : engLevel === 'junior' ? 'Entry Level'
+  const s4 = hasAi
+    ? 'Passionate about building intelligent systems that solve complex business problems while maintaining reliability, scalability, and engineering excellence.'
+    : hasDomain
+    ? 'Committed to engineering practices that prioritize maintainability, scalability, and long-term system quality.'
     : null;
 
-  if (!role && !levelLabel) return '';
-
-  return `
-  <div class="section">
-    <div class="section-title">Target Role</div>
-    <div class="two-col-meta">
-      ${role      ? `<div class="meta-item"><span class="meta-label">Primary Role:</span><span class="meta-value">${esc(role)}</span></div>` : ''}
-      ${levelLabel ? `<div class="meta-item"><span class="meta-label">Engineering Level:</span><span class="meta-value">${esc(levelLabel)}</span></div>` : ''}
-    </div>
-  </div>`;
+  return [s1, s2, s3, s4].filter(Boolean).join(' ') || null;
 }
 
-// ─── P3: Career Highlights section ───────────────────────────────────────────
+// ─── Career Highlights (engineering level first, then years, then patterns) ───
 
 function buildCareerHighlightsHtml(repos, experience) {
   const highlights = [];
 
-  // Years of experience from LinkedIn
-  if (Array.isArray(experience) && experience.length) {
-    const parsedDates = experience
-      .map(e => e.startDate)
-      .filter(Boolean)
-      .map(d => new Date(d))
-      .filter(d => !isNaN(d.getTime()));
-    if (parsedDates.length) {
-      const earliestMs = Math.min(...parsedDates.map(d => d.getTime()));
-      const years = Math.floor((Date.now() - earliestMs) / (1000 * 60 * 60 * 24 * 365));
-      if (years > 0) highlights.push(`${years}+ Years Professional Experience`);
-    }
-  }
+  // Engineering level as the first bullet
+  const engLevel  = getEngLevel(repos);
+  const levelLabel = { senior: 'Senior', mid: 'Mid-Level', junior: 'Entry Level' }[engLevel];
+  if (levelLabel) highlights.push(`${levelLabel} Engineering Level`);
 
-  // Pattern-driven highlights (order matters — strongest signals first)
+  // Years of experience
+  const years = getYearsExperience(experience);
+  if (years) highlights.push(`${years}+ Years Professional Experience`);
+
+  // Pattern-driven highlights
   const patterns = allPatterns(repos);
   for (const [pattern, label] of Object.entries(HIGHLIGHT_MAP)) {
     if (patterns.includes(pattern) && !highlights.includes(label)) {
@@ -293,7 +297,7 @@ function buildCareerHighlightsHtml(repos, experience) {
   // AI features not already captured
   const aiFeatures = [...new Set(repos.flatMap(r => r.intelligence?.aiCapabilities?.aiFeatures || []))];
   for (const f of aiFeatures) {
-    if (highlights.length >= 7) break;
+    if (highlights.length >= 8) break;
     if (!highlights.some(h => h.toLowerCase().includes(f.toLowerCase().slice(0, 8)))) {
       highlights.push(f);
     }
@@ -305,7 +309,7 @@ function buildCareerHighlightsHtml(repos, experience) {
   <div class="section">
     <div class="section-title">Career Highlights</div>
     <div class="highlights-grid">
-      ${highlights.slice(0, 7).map(h => `
+      ${highlights.slice(0, 8).map(h => `
       <div class="highlight-item">
         <span class="highlight-check">&#10003;</span>
         <span class="highlight-text">${esc(h)}</span>
@@ -314,7 +318,7 @@ function buildCareerHighlightsHtml(repos, experience) {
   </div>`;
 }
 
-// ─── Existing helpers (updated) ───────────────────────────────────────────────
+// ─── Skills aggregation ───────────────────────────────────────────────────────
 
 function aggregateSkills(repos, topSkills) {
   const byCategory = {};
@@ -326,8 +330,7 @@ function aggregateSkills(repos, topSkills) {
   for (const repo of repos) {
     const ci = repo.codeIntelligence;
     if (!ci) continue;
-    const techs = [...(ci.technologies || []), ...(ci.frameworks || [])];
-    for (const t of techs) {
+    for (const t of [...(ci.technologies || []), ...(ci.frameworks || [])]) {
       if (seen.has(t)) continue;
       seen.add(t);
       const cat = TECH_CATEGORIES[t];
@@ -338,7 +341,7 @@ function aggregateSkills(repos, topSkills) {
     }
   }
 
-  // Fallback to narrative top_skills
+  // Fallback to narrative top_skills if deep analysis produced nothing
   if (Object.keys(byCategory).filter(k => k !== 'Languages').length === 0 && topSkills.length) {
     for (const s of topSkills) {
       const cat = s.category || 'Other';
@@ -350,8 +353,10 @@ function aggregateSkills(repos, topSkills) {
   return byCategory;
 }
 
+// ─── Engineering Signals ──────────────────────────────────────────────────────
+
 function buildEngineeringSignals(repos) {
-  const patternSet  = new Set();
+  const patternSet   = new Set();
   const aiFeatureSet = new Set();
 
   for (const repo of repos) {
@@ -370,19 +375,20 @@ function buildEngineeringSignals(repos) {
   };
 }
 
+// ─── Project blocks ───────────────────────────────────────────────────────────
+
 function buildProjectBlocks(projects, repos) {
   return projects.map(p => {
     const repo  = repos.find(r => r.name === p.repoName) || {};
     const ci    = repo.codeIntelligence || {};
     const intel = repo.intelligence     || {};
 
-    // P0 fix: deduplicate before slicing, limit to 6, use CI_ARCH_LABELS
+    // Deduplicate before slicing; use CI_ARCH_LABELS for human-readable arch labels
     const techKeys = [...new Set([...(ci.technologies || []), ...(ci.frameworks || [])])];
     const techs = techKeys
       .slice(0, 6)
       .map(t => TECH_LABELS[t] || t.charAt(0).toUpperCase() + t.slice(1));
 
-    // Use CI_ARCH_LABELS for proper human-readable arch pattern labels
     const archPatterns = (ci.architecturePatterns || [])
       .slice(0, 3)
       .map(a => CI_ARCH_LABELS[a] || a.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
@@ -393,13 +399,7 @@ function buildProjectBlocks(projects, repos) {
 
     const hookSentence = intel.portfolioNarrative?.hookSentence || p.oneLiner || null;
 
-    return {
-      name:         p.repoName,
-      hook:         hookSentence,
-      archPatterns,
-      bullets:      allBullets,
-      techs,
-    };
+    return { name: p.repoName, hook: hookSentence, archPatterns, bullets: allBullets, techs };
   });
 }
 
@@ -414,7 +414,7 @@ function buildResumeHtml({
   const skillsByCategory = aggregateSkills(repos, topSkills);
   const signals          = buildEngineeringSignals(repos);
   const projectBlocks    = buildProjectBlocks(projects, repos);
-  const summary          = buildPersonSummary(repos);
+  const summary          = buildPersonSummary(repos, experience);
 
   const displayName     = profile.fullName || title || 'Developer Portfolio';
   const displayRoleLine = roleTitle || profile.headline || headline || null;
@@ -427,9 +427,6 @@ function buildResumeHtml({
     profile.website     ? `<a href="${esc(ensureHttps(profile.website))}">${esc(profile.website.replace(/^https?:\/\//, ''))}</a>` : null,
   ].filter(Boolean);
 
-  // ── Section HTML ──────────────────────────────────────────────────────────
-
-  const targetRoleHtml     = buildTargetRoleHtml(repos, careerSignals);
   const careerHighlightsHtml = buildCareerHighlightsHtml(repos, experience);
 
   const signalChips = [...signals.patterns, ...signals.aiFeatures];
@@ -440,7 +437,8 @@ function buildResumeHtml({
     ${signals.strengths.length ? `<ul class="signal-list">${signals.strengths.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
   </div>` : '';
 
-  const skillCategoryOrder = ['Languages', 'Backend', 'Frontend', 'Databases', 'AI/ML', 'DevOps', 'Integrations', 'Other'];
+  // ORM category sits between Databases and AI/ML
+  const skillCategoryOrder = ['Languages', 'Backend', 'Frontend', 'Databases', 'ORM', 'AI/ML', 'DevOps', 'Integrations', 'Other'];
   const orderedSkillEntries = [
     ...skillCategoryOrder.filter(c => skillsByCategory[c]),
     ...Object.keys(skillsByCategory).filter(c => !skillCategoryOrder.includes(c)),
@@ -523,13 +521,7 @@ function buildResumeHtml({
   }
 
   /* ── Summary ── */
-  .summary { font-size: 10pt; color: #1e293b; line-height: 1.6; }
-
-  /* ── Target Role ── */
-  .two-col-meta { display: flex; gap: 32px; flex-wrap: wrap; }
-  .meta-item    { display: flex; align-items: center; gap: 8px; }
-  .meta-label   { font-size: 9.5pt; font-weight: 700; color: #475569; }
-  .meta-value   { font-size: 10pt; font-weight: 700; color: #0f172a; }
+  .summary { font-size: 10pt; color: #1e293b; line-height: 1.65; }
 
   /* ── Career Highlights ── */
   .highlights-grid { display: flex; flex-wrap: wrap; gap: 6px 28px; }
@@ -598,8 +590,6 @@ function buildResumeHtml({
     <p class="summary">${esc(summary)}</p>
   </div>` : ''}
 
-  ${targetRoleHtml}
-
   ${careerHighlightsHtml}
 
   ${signalsHtml}
@@ -633,7 +623,7 @@ function buildResumeHtml({
 </html>`;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── Utilities ────────────────────────────────────────────────────────────────
 
 function esc(str) {
   if (!str) return '';

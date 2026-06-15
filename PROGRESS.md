@@ -21,7 +21,7 @@
 
 ## Repository Phase
 
-**Current Phase: M11 — Active Development (PDF Resume Quality Overhaul — Uncommitted)**
+**Current Phase: M12 — Active Development (PDF Resume Final Polish — Uncommitted)**
 
 | Layer | Status |
 |-------|--------|
@@ -161,8 +161,14 @@ New Analysis Panel tabs: Overview (Executive Intelligence Dashboard), Architectu
 
 Changes in this session that have **not been committed yet**:
 
-### `backend/services/pdfGenerator.js` *(M11 — complete rewrite)*
-All M11 changes described above. This is the only file changed in this session.
+### `backend/services/pdfGenerator.js` *(M12 — final polish)*
+- Removed `buildTargetRoleHtml()` and Target Role section entirely (redundant; recruiters infer from evidence)
+- Moved Engineering Level into Career Highlights as first bullet ("Senior Engineering Level")
+- Extracted `getEngLevel(repos)` and `getYearsExperience(experience)` as shared helpers (used by both summary and highlights)
+- Expanded `buildPersonSummary()` to 4 sentences: identity+years+scope / core techs / proven expertise signals / closing passion sentence; now takes `experience` parameter to include years in S1
+- ORM tools (`prisma`, `drizzle`, `mongoose`, `sequelize`, `typeorm`, `knex`) moved from `'Databases'` → `'ORM'` category in `TECH_CATEGORIES`
+- `'ORM'` added to `skillCategoryOrder` between `'Databases'` and `'AI/ML'`
+- Updated `CI_ARCH_LABELS` with recruiter-friendly labels: `orm` → "Database Persistence Layer", `containerization` → "Containerized Deployment", `rest_api` → "REST API Architecture", `cicd_pipeline` → "Automated CI/CD Pipeline", `infrastructure_as_code` → "Infrastructure Automation", `component_ui` → "Component-Driven Frontend", `ssr_framework` → "Server-Side Rendering (SSR)", `utility_css_framework` → "Utility-First CSS", `payment_processing` → "Payment Integration", `query_builder` → "Programmatic Query Layer"
 
 ---
 
@@ -295,4 +301,4 @@ For each feature to be considered complete:
 
 ---
 
-*Last updated: 2026-06-15 — M11: complete pdfGenerator.js rewrite. Fixes [object Object] role title bug, adds person-focused Professional Summary, Target Role section, Career Highlights section, and CI arch pattern label map. M9/M10 documented retrospectively.*
+*Last updated: 2026-06-15 — M12: resume PDF final polish. Removed Target Role section, moved Engineering Level into Career Highlights, expanded summary to 4 sentences with years of experience, added ORM skills category, humanized CI arch pattern labels.*
