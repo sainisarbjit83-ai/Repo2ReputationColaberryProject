@@ -16,7 +16,7 @@ async function generatePortfolioPdf(data) {
     const pdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: false,
-      margin: { top: '16mm', right: '16mm', bottom: '16mm', left: '16mm' },
+      margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' },
     });
     return pdfBuffer;
   } finally {
@@ -24,48 +24,45 @@ async function generatePortfolioPdf(data) {
   }
 }
 
-// ─── Tech category map ────────────────────────────────────────────────────────
-// Maps detected technology keys → resume category labels
+// ─── Lookup tables ────────────────────────────────────────────────────────────
 
 const TECH_CATEGORIES = {
-  // Languages (derived from primary_language — handled separately)
-  // Backend
   express: 'Backend',   fastify: 'Backend',   nestjs: 'Backend',
   graphql: 'Backend',   trpc: 'Backend',      koa: 'Backend',
   hono: 'Backend',      django: 'Backend',    flask: 'Backend',
   fastapi: 'Backend',   rails: 'Backend',     spring: 'Backend',
-  // Frontend
+  jwt: 'Backend',       passport: 'Backend',  'next-auth': 'Backend',
+  clerk: 'Backend',     'firebase-auth': 'Backend',
   react: 'Frontend',    nextjs: 'Frontend',   vue: 'Frontend',
   angular: 'Frontend',  svelte: 'Frontend',   tailwind: 'Frontend',
   redux: 'Frontend',    zustand: 'Frontend',  jotai: 'Frontend',
-  // Databases
   postgresql: 'Databases', mysql: 'Databases',  mongodb: 'Databases',
   redis: 'Databases',      prisma: 'Databases', drizzle: 'Databases',
   mongoose: 'Databases',   sequelize: 'Databases', typeorm: 'Databases',
   knex: 'Databases',       elasticsearch: 'Databases', dynamodb: 'Databases',
-  // AI/ML
   openai: 'AI/ML',      anthropic: 'AI/ML',  langchain: 'AI/ML',
   llamaindex: 'AI/ML',  'vercel-ai-sdk': 'AI/ML', pinecone: 'AI/ML',
   weaviate: 'AI/ML',    chromadb: 'AI/ML',   embeddings: 'AI/ML',
   mistral: 'AI/ML',     cohere: 'AI/ML',     groq: 'AI/ML',
-  // DevOps & Cloud
   docker: 'DevOps',     kubernetes: 'DevOps', 'github-actions': 'DevOps',
   terraform: 'DevOps',  stripe: 'Integrations',
-  // Auth (surface under Backend if no other category fits)
-  jwt: 'Backend',       passport: 'Backend',  'next-auth': 'Backend',
-  clerk: 'Backend',     'firebase-auth': 'Backend',
 };
 
 const TECH_LABELS = {
-  nextjs: 'Next.js', 'next-auth': 'NextAuth', 'vercel-ai-sdk': 'Vercel AI SDK',
-  'github-actions': 'GitHub Actions', 'firebase-auth': 'Firebase Auth',
-  graphql: 'GraphQL', trpc: 'tRPC', postgresql: 'PostgreSQL', mongodb: 'MongoDB',
-  openai: 'OpenAI', langchain: 'LangChain', llamaindex: 'LlamaIndex',
-  chromadb: 'ChromaDB', pinecone: 'Pinecone', weaviate: 'Weaviate',
-  nestjs: 'NestJS', tailwind: 'Tailwind CSS', typeorm: 'TypeORM',
-  dynamodb: 'DynamoDB', elasticsearch: 'Elasticsearch',
+  nextjs: 'Next.js',            'next-auth': 'NextAuth',
+  'vercel-ai-sdk': 'Vercel AI SDK', 'github-actions': 'GitHub Actions',
+  'firebase-auth': 'Firebase Auth', graphql: 'GraphQL',
+  trpc: 'tRPC',                 postgresql: 'PostgreSQL',
+  mongodb: 'MongoDB',           openai: 'OpenAI',
+  langchain: 'LangChain',       llamaindex: 'LlamaIndex',
+  chromadb: 'ChromaDB',         pinecone: 'Pinecone',
+  weaviate: 'Weaviate',         nestjs: 'NestJS',
+  tailwind: 'Tailwind CSS',     typeorm: 'TypeORM',
+  dynamodb: 'DynamoDB',         elasticsearch: 'Elasticsearch',
+  'vercel-ai-sdk': 'Vercel AI SDK',
 };
 
+// Maps inference patternsInferred → human chip labels
 const PATTERN_LABELS = {
   fullstack_architecture_confirmed:   'Full Stack Architecture',
   ai_orchestrated_system:             'AI/LLM Orchestration',
@@ -80,40 +77,251 @@ const PATTERN_LABELS = {
   infrastructure_as_code_present:     'Infrastructure as Code',
 };
 
+// Maps code_intelligence architecturePatterns → human labels
+const CI_ARCH_LABELS = {
+  rest_api:                'RESTful API',
+  graphql_api:             'GraphQL API',
+  type_safe_api:           'Type-Safe API',
+  enterprise_rest_api:     'Enterprise REST API',
+  stateless_auth:          'JWT Authentication',
+  session_based_auth:      'Session Authentication',
+  hosted_auth_provider:    'Hosted Auth Provider',
+  strategy_based_auth:     'Strategy-Based Auth',
+  provider_based_auth:     'OAuth Authentication',
+  custom_auth_middleware:  'Custom Auth Middleware',
+  orm:                     'ORM Data Access',
+  query_builder:           'Query Builder',
+  document_database_odm:   'Document ODM',
+  document_database:       'Document Database',
+  relational_database:     'Relational Database',
+  cache_store:             'Caching Layer',
+  nosql_database:          'NoSQL Database',
+  search_database:         'Full-Text Search',
+  vector_database:         'Vector Database',
+  vector_embeddings:       'Vector Embeddings',
+  llm_integration:         'LLM Integration',
+  llm_orchestration:       'LLM Orchestration',
+  rag_framework:           'RAG Framework',
+  component_ui:            'Component-Based UI',
+  ssr_framework:           'Server-Side Rendering',
+  global_state_management: 'State Management',
+  utility_css_framework:   'Utility CSS',
+  containerization:        'Docker Containerization',
+  cicd_pipeline:           'CI/CD Pipeline',
+  infrastructure_as_code:  'Infrastructure as Code',
+  payment_processing:      'Payment Processing',
+};
+
+// Maps patternsInferred → target role string
 const ROLE_MAP = {
   ai_orchestrated_system:           'AI Engineer',
   retrieval_augmented_architecture: 'AI Engineer',
-  ai_integration_confirmed:         'AI-Integrated Full Stack Engineer',
+  ai_integration_confirmed:         'Full Stack AI Engineer',
   fullstack_architecture_confirmed: 'Full Stack Engineer',
   production_ready_backend:         'Backend Engineer',
   enterprise_backend_patterns:      'Backend Engineer',
   modular_frontend_architecture:    'Frontend Engineer',
 };
 
-// ─── Data aggregation helpers ─────────────────────────────────────────────────
+// Maps patternsInferred → career highlight label
+const HIGHLIGHT_MAP = {
+  ai_orchestrated_system:           'AI/LLM Orchestration',
+  retrieval_augmented_architecture: 'Retrieval-Augmented Generation (RAG)',
+  ai_integration_confirmed:         'AI/LLM Integration',
+  fullstack_architecture_confirmed: 'Full Stack Development',
+  enterprise_backend_patterns:      'Enterprise Architecture',
+  production_ready_backend:         'Production Infrastructure',
+  authentication_layer_present:     'Security & Authentication',
+  infrastructure_as_code_present:   'Infrastructure as Code',
+  strong_domain_separation:         'Domain-Driven Architecture',
+  scalable_service_architecture:    'Scalable System Design',
+};
+
+// ─── Helper: get all unique patternsInferred across repos ─────────────────────
+
+function allPatterns(repos) {
+  return [...new Set(repos.flatMap(r => r.inference?.patternsInferred || []))];
+}
+
+// ─── P0 fix: inferRoleTitle ───────────────────────────────────────────────────
+// Handles career_signals as { domain, score } objects OR legacy strings.
 
 function inferRoleTitle(repos, careerSignals) {
-  if (careerSignals?.length) return careerSignals[0];
-
-  for (const repo of repos) {
-    const patterns = repo.inference?.patternsInferred || [];
-    for (const [pattern, role] of Object.entries(ROLE_MAP)) {
-      if (patterns.includes(pattern)) return role;
+  if (Array.isArray(careerSignals) && careerSignals.length) {
+    const first = careerSignals[0];
+    if (typeof first === 'string') return first;
+    if (first?.domain) {
+      const sorted = [...careerSignals]
+        .filter(s => s?.domain)
+        .sort((a, b) => (b.score || 0) - (a.score || 0));
+      return sorted[0].domain;
     }
+  }
+  const patterns = allPatterns(repos);
+  for (const [pattern, role] of Object.entries(ROLE_MAP)) {
+    if (patterns.includes(pattern)) return role;
   }
   return null;
 }
 
+// ─── P1: Person-focused professional summary ─────────────────────────────────
+
+function buildPersonSummary(repos) {
+  const patterns = allPatterns(repos);
+
+  // Engineering level from first repo that has it
+  let engLevel = null;
+  for (const r of repos) {
+    const lvl = r.inference?.overallAssessment?.engineeringLevel;
+    if (lvl) { engLevel = lvl; break; }
+  }
+  const levelLabel = engLevel === 'senior' ? 'Senior'
+    : engLevel === 'mid'    ? 'Mid-Level'
+    : engLevel === 'junior' ? 'Entry-Level'
+    : null;
+
+  // Role from patternsInferred
+  let role = null;
+  for (const [pattern, r] of Object.entries(ROLE_MAP)) {
+    if (patterns.includes(pattern)) { role = r; break; }
+  }
+
+  // Top 5 technologies across repos (deduplicated, categorized)
+  const seen = new Set();
+  const topTechs = [];
+  for (const repo of repos) {
+    const ci = repo.codeIntelligence;
+    if (!ci) continue;
+    for (const t of [...(ci.technologies || []), ...(ci.frameworks || [])]) {
+      if (seen.has(t) || !TECH_CATEGORIES[t]) continue;
+      seen.add(t);
+      topTechs.push(TECH_LABELS[t] || t.charAt(0).toUpperCase() + t.slice(1));
+      if (topTechs.length >= 5) break;
+    }
+    if (topTechs.length >= 5) break;
+  }
+
+  // Sentence 1: who they are + what they build
+  const titlePart = [levelLabel, role].filter(Boolean).join(' ');
+  const buildContext = (patterns.includes('ai_orchestrated_system') || patterns.includes('ai_integration_confirmed'))
+    ? 'AI-powered applications, scalable backend services, and production-grade cloud systems'
+    : patterns.includes('fullstack_architecture_confirmed')
+    ? 'full-stack web applications and scalable backend services'
+    : (patterns.includes('production_ready_backend') || patterns.includes('enterprise_backend_patterns'))
+    ? 'scalable backend services, production APIs, and enterprise systems'
+    : 'software applications and backend systems';
+
+  const s1 = titlePart
+    ? `${titlePart} with experience building ${buildContext}.`
+    : `Software engineer with experience building ${buildContext}.`;
+
+  // Sentence 2: core technologies
+  const s2 = topTechs.length
+    ? `Skilled in ${topTechs.join(', ')}.`
+    : null;
+
+  // Sentence 3: engineering signals
+  const signalLabels = patterns
+    .filter(p => PATTERN_LABELS[p])
+    .map(p => PATTERN_LABELS[p])
+    .slice(0, 3);
+  const strengths = [...new Set(repos.flatMap(r => r.inference?.strengths || []))].slice(0, 1);
+
+  const s3 = signalLabels.length
+    ? `Demonstrated expertise in ${signalLabels.join(', ').toLowerCase()}.`
+    : strengths.length
+    ? `${strengths[0]}.`
+    : null;
+
+  return [s1, s2, s3].filter(Boolean).join(' ') || null;
+}
+
+// ─── P2: Target Role section ──────────────────────────────────────────────────
+
+function buildTargetRoleHtml(repos, careerSignals) {
+  const role = inferRoleTitle(repos, careerSignals);
+
+  let engLevel = null;
+  for (const r of repos) {
+    const lvl = r.inference?.overallAssessment?.engineeringLevel;
+    if (lvl) { engLevel = lvl; break; }
+  }
+  const levelLabel = engLevel === 'senior' ? 'Senior'
+    : engLevel === 'mid'    ? 'Mid-Level'
+    : engLevel === 'junior' ? 'Entry Level'
+    : null;
+
+  if (!role && !levelLabel) return '';
+
+  return `
+  <div class="section">
+    <div class="section-title">Target Role</div>
+    <div class="two-col-meta">
+      ${role      ? `<div class="meta-item"><span class="meta-label">Primary Role:</span><span class="meta-value">${esc(role)}</span></div>` : ''}
+      ${levelLabel ? `<div class="meta-item"><span class="meta-label">Engineering Level:</span><span class="meta-value">${esc(levelLabel)}</span></div>` : ''}
+    </div>
+  </div>`;
+}
+
+// ─── P3: Career Highlights section ───────────────────────────────────────────
+
+function buildCareerHighlightsHtml(repos, experience) {
+  const highlights = [];
+
+  // Years of experience from LinkedIn
+  if (Array.isArray(experience) && experience.length) {
+    const parsedDates = experience
+      .map(e => e.startDate)
+      .filter(Boolean)
+      .map(d => new Date(d))
+      .filter(d => !isNaN(d.getTime()));
+    if (parsedDates.length) {
+      const earliestMs = Math.min(...parsedDates.map(d => d.getTime()));
+      const years = Math.floor((Date.now() - earliestMs) / (1000 * 60 * 60 * 24 * 365));
+      if (years > 0) highlights.push(`${years}+ Years Professional Experience`);
+    }
+  }
+
+  // Pattern-driven highlights (order matters — strongest signals first)
+  const patterns = allPatterns(repos);
+  for (const [pattern, label] of Object.entries(HIGHLIGHT_MAP)) {
+    if (patterns.includes(pattern) && !highlights.includes(label)) {
+      highlights.push(label);
+    }
+  }
+
+  // AI features not already captured
+  const aiFeatures = [...new Set(repos.flatMap(r => r.intelligence?.aiCapabilities?.aiFeatures || []))];
+  for (const f of aiFeatures) {
+    if (highlights.length >= 7) break;
+    if (!highlights.some(h => h.toLowerCase().includes(f.toLowerCase().slice(0, 8)))) {
+      highlights.push(f);
+    }
+  }
+
+  if (!highlights.length) return '';
+
+  return `
+  <div class="section">
+    <div class="section-title">Career Highlights</div>
+    <div class="highlights-grid">
+      ${highlights.slice(0, 7).map(h => `
+      <div class="highlight-item">
+        <span class="highlight-check">&#10003;</span>
+        <span class="highlight-text">${esc(h)}</span>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+
+// ─── Existing helpers (updated) ───────────────────────────────────────────────
+
 function aggregateSkills(repos, topSkills) {
   const byCategory = {};
 
-  // Collect languages from primaryLanguage across repos
-  const languages = [...new Set(
-    repos.map(r => r.primaryLanguage).filter(Boolean)
-  )];
+  const languages = [...new Set(repos.map(r => r.primaryLanguage).filter(Boolean))];
   if (languages.length) byCategory['Languages'] = languages;
 
-  // Collect technologies from deep analysis across all repos
   const seen = new Set();
   for (const repo of repos) {
     const ci = repo.codeIntelligence;
@@ -126,16 +334,16 @@ function aggregateSkills(repos, topSkills) {
       if (!cat) continue;
       const label = TECH_LABELS[t] || t.charAt(0).toUpperCase() + t.slice(1);
       byCategory[cat] = byCategory[cat] || [];
-      byCategory[cat].push(label);
+      if (!byCategory[cat].includes(label)) byCategory[cat].push(label);
     }
   }
 
-  // Fall back to narrative top_skills if no deep analysis techs found
+  // Fallback to narrative top_skills
   if (Object.keys(byCategory).filter(k => k !== 'Languages').length === 0 && topSkills.length) {
     for (const s of topSkills) {
       const cat = s.category || 'Other';
       byCategory[cat] = byCategory[cat] || [];
-      byCategory[cat].push(s.name);
+      if (!byCategory[cat].includes(s.name)) byCategory[cat].push(s.name);
     }
   }
 
@@ -143,7 +351,7 @@ function aggregateSkills(repos, topSkills) {
 }
 
 function buildEngineeringSignals(repos) {
-  const patternSet = new Set();
+  const patternSet  = new Set();
   const aiFeatureSet = new Set();
 
   for (const repo of repos) {
@@ -157,33 +365,31 @@ function buildEngineeringSignals(repos) {
 
   return {
     patterns:   [...patternSet].map(p => PATTERN_LABELS[p]),
-    aiFeatures: [...aiFeatureSet].slice(0, 4),
-    strengths:  [...new Set(
-      repos.flatMap(r => r.inference?.strengths || [])
-    )].slice(0, 4),
+    aiFeatures: [...aiFeatureSet].slice(0, 3),
+    strengths:  [...new Set(repos.flatMap(r => r.inference?.strengths || []))].slice(0, 4),
   };
 }
 
 function buildProjectBlocks(projects, repos) {
   return projects.map(p => {
-    const repo = repos.find(r => r.name === p.repoName) || {};
-    const ci   = repo.codeIntelligence || {};
-    const intel = repo.intelligence    || {};
+    const repo  = repos.find(r => r.name === p.repoName) || {};
+    const ci    = repo.codeIntelligence || {};
+    const intel = repo.intelligence     || {};
 
-    const techs = [
-      ...(ci.technologies || []),
-      ...(ci.frameworks   || []),
-    ].slice(0, 8).map(t => TECH_LABELS[t] || t.charAt(0).toUpperCase() + t.slice(1));
+    // P0 fix: deduplicate before slicing, limit to 6, use CI_ARCH_LABELS
+    const techKeys = [...new Set([...(ci.technologies || []), ...(ci.frameworks || [])])];
+    const techs = techKeys
+      .slice(0, 6)
+      .map(t => TECH_LABELS[t] || t.charAt(0).toUpperCase() + t.slice(1));
 
+    // Use CI_ARCH_LABELS for proper human-readable arch pattern labels
     const archPatterns = (ci.architecturePatterns || [])
       .slice(0, 3)
-      .map(a => a.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
+      .map(a => CI_ARCH_LABELS[a] || a.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
 
     const impactBullets = (intel.resume?.impactStatements || []).slice(0, 3);
     const capBullets    = (intel.skills?.engineeringCapabilities || []).slice(0, 2);
-
-    // Combine impact + capability bullets, deduplicate, cap at 4
-    const allBullets = [...new Set([...impactBullets, ...capBullets])].slice(0, 4);
+    const allBullets    = [...new Set([...impactBullets, ...capBullets])].slice(0, 4);
 
     const hookSentence = intel.portfolioNarrative?.hookSentence || p.oneLiner || null;
 
@@ -197,23 +403,6 @@ function buildProjectBlocks(projects, repos) {
   });
 }
 
-function buildSummary(narrative, repos) {
-  // Prefer deep analysis hook sentence from highest-confidence repo
-  for (const repo of repos) {
-    const hook = repo.intelligence?.portfolioNarrative?.hookSentence;
-    const impact = repo.intelligence?.portfolioNarrative?.projectImpact;
-    if (hook) {
-      return impact ? `${hook} ${impact}` : hook;
-    }
-  }
-  // Fall back to portfolio narrative (truncated)
-  if (narrative) {
-    const sentences = narrative.split(/(?<=[.!?])\s+/);
-    return sentences.slice(0, 3).join(' ');
-  }
-  return null;
-}
-
 // ─── HTML builder ─────────────────────────────────────────────────────────────
 
 function buildResumeHtml({
@@ -221,38 +410,34 @@ function buildResumeHtml({
   careerSignals = [], repos = [], githubUsername,
   profile = {}, experience = [], education = [],
 }) {
-  const roleTitle      = inferRoleTitle(repos, careerSignals);
+  const roleTitle        = inferRoleTitle(repos, careerSignals);
   const skillsByCategory = aggregateSkills(repos, topSkills);
-  const signals        = buildEngineeringSignals(repos);
-  const projectBlocks  = buildProjectBlocks(projects, repos);
-  const summary        = buildSummary(narrative, repos);
+  const signals          = buildEngineeringSignals(repos);
+  const projectBlocks    = buildProjectBlocks(projects, repos);
+  const summary          = buildPersonSummary(repos);
 
-  const displayName    = profile.fullName || title || 'Developer Portfolio';
-  const displayHeadline = roleTitle || profile.headline || headline || '';
+  const displayName     = profile.fullName || title || 'Developer Portfolio';
+  const displayRoleLine = roleTitle || profile.headline || headline || null;
 
   const contactParts = [
-    profile.email       ? esc(profile.email)    : null,
-    profile.location    ? esc(profile.location)  : null,
-    profile.linkedinUrl ? `<a href="${esc(ensureHttps(profile.linkedinUrl))}">${esc(profile.linkedinUrl.replace(/^https?:\/\//,''))}</a>` : null,
+    profile.email       ? esc(profile.email) : null,
+    profile.location    ? esc(profile.location) : null,
+    profile.linkedinUrl ? `<a href="${esc(ensureHttps(profile.linkedinUrl))}">${esc(profile.linkedinUrl.replace(/^https?:\/\//, ''))}</a>` : null,
     githubUsername      ? `<a href="https://github.com/${esc(githubUsername)}">github.com/${esc(githubUsername)}</a>` : null,
-    profile.website     ? `<a href="${esc(ensureHttps(profile.website))}">${esc(profile.website.replace(/^https?:\/\//,''))}</a>` : null,
+    profile.website     ? `<a href="${esc(ensureHttps(profile.website))}">${esc(profile.website.replace(/^https?:\/\//, ''))}</a>` : null,
   ].filter(Boolean);
 
-  // ── Section HTML builders ──────────────────────────────────────────────────
+  // ── Section HTML ──────────────────────────────────────────────────────────
+
+  const targetRoleHtml     = buildTargetRoleHtml(repos, careerSignals);
+  const careerHighlightsHtml = buildCareerHighlightsHtml(repos, experience);
 
   const signalChips = [...signals.patterns, ...signals.aiFeatures];
-
   const signalsHtml = signalChips.length || signals.strengths.length ? `
   <div class="section">
     <div class="section-title">Engineering Signals</div>
-    ${signalChips.length ? `
-    <div class="chips">
-      ${signalChips.map(s => `<span class="chip">${esc(s)}</span>`).join('')}
-    </div>` : ''}
-    ${signals.strengths.length ? `
-    <ul class="signal-list">
-      ${signals.strengths.map(s => `<li>${esc(s)}</li>`).join('')}
-    </ul>` : ''}
+    ${signalChips.length ? `<div class="chips">${signalChips.map(s => `<span class="chip">${esc(s)}</span>`).join('')}</div>` : ''}
+    ${signals.strengths.length ? `<ul class="signal-list">${signals.strengths.map(s => `<li>${esc(s)}</li>`).join('')}</ul>` : ''}
   </div>` : '';
 
   const skillCategoryOrder = ['Languages', 'Backend', 'Frontend', 'Databases', 'AI/ML', 'DevOps', 'Integrations', 'Other'];
@@ -272,7 +457,7 @@ function buildResumeHtml({
   </div>` : '';
 
   const experienceHtml = experience.map(e => {
-    const dateRange  = [e.startDate, e.endDate].filter(Boolean).join(' – ') + (e.duration ? ` (${e.duration})` : '');
+    const dateRange   = [e.startDate, e.endDate].filter(Boolean).join(' – ') + (e.duration ? ` (${e.duration})` : '');
     const companyLine = [e.company, e.location].filter(Boolean).join(', ');
     const bulletsHtml = (e.bullets || []).length
       ? `<ul class="exp-bullets">${e.bullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul>`
@@ -302,11 +487,8 @@ function buildResumeHtml({
       <div class="project-name">${esc(fmtName(p.name))}</div>
       ${p.archPatterns.length ? `<div class="project-arch">${p.archPatterns.map(esc).join(' &middot; ')}</div>` : ''}
       ${p.hook && !p.bullets.length ? `<p class="project-hook">${esc(p.hook)}</p>` : ''}
-      ${p.bullets.length ? `
-      <ul class="project-bullets">
-        ${p.bullets.map(b => `<li>${esc(b)}</li>`).join('')}
-      </ul>` : ''}
-      ${p.techs.length ? `<p class="project-techs">${p.techs.map(esc).join(' &middot; ')}</p>` : ''}
+      ${p.bullets.length ? `<ul class="project-bullets">${p.bullets.map(b => `<li>${esc(b)}</li>`).join('')}</ul>` : ''}
+      ${p.techs.length ? `<p class="project-techs"><strong>Tech Stack:</strong> ${p.techs.map(esc).join(', ')}</p>` : ''}
     </div>`).join('');
 
   return `<!DOCTYPE html>
@@ -323,40 +505,54 @@ function buildResumeHtml({
     background: #fff;
   }
 
-  .header { margin-bottom: 14px; border-bottom: 2px solid #0f172a; padding-bottom: 10px; }
-  .name     { font-size: 21pt; font-weight: 700; color: #0f172a; letter-spacing: -0.5px; }
-  .role     { font-size: 11pt; color: #1e3a8a; margin-top: 2px; font-weight: 600; }
-  .contact  { font-size: 9pt; color: #475569; margin-top: 5px; }
+  /* ── Header ── */
+  .header { margin-bottom: 13px; border-bottom: 2px solid #0f172a; padding-bottom: 9px; }
+  .name    { font-size: 21pt; font-weight: 700; color: #0f172a; letter-spacing: -0.5px; }
+  .role    { font-size: 11pt; color: #1e3a8a; margin-top: 2px; font-weight: 600; }
+  .contact { font-size: 9pt; color: #475569; margin-top: 5px; }
   .contact a { color: #1e3a8a; text-decoration: none; }
   .contact-sep { color: #94a3b8; margin: 0 5px; }
 
-  .section { margin-bottom: 13px; }
+  /* ── Sections ── */
+  .section { margin-bottom: 12px; }
   .section-title {
-    font-size: 9.5pt;
-    font-weight: 700;
-    color: #0f172a;
-    text-transform: uppercase;
-    letter-spacing: 1.6px;
+    font-size: 9.5pt; font-weight: 700; color: #0f172a;
+    text-transform: uppercase; letter-spacing: 1.6px;
     border-bottom: 1px solid #cbd5e1;
-    padding-bottom: 3px;
-    margin-bottom: 7px;
+    padding-bottom: 3px; margin-bottom: 7px;
   }
 
+  /* ── Summary ── */
   .summary { font-size: 10pt; color: #1e293b; line-height: 1.6; }
 
+  /* ── Target Role ── */
+  .two-col-meta { display: flex; gap: 32px; flex-wrap: wrap; }
+  .meta-item    { display: flex; align-items: center; gap: 8px; }
+  .meta-label   { font-size: 9.5pt; font-weight: 700; color: #475569; }
+  .meta-value   { font-size: 10pt; font-weight: 700; color: #0f172a; }
+
+  /* ── Career Highlights ── */
+  .highlights-grid { display: flex; flex-wrap: wrap; gap: 6px 28px; }
+  .highlight-item  { display: flex; align-items: center; gap: 6px; min-width: 200px; }
+  .highlight-check { font-size: 10pt; color: #16a34a; font-weight: 700; flex-shrink: 0; }
+  .highlight-text  { font-size: 9.5pt; color: #1e293b; font-weight: 500; }
+
+  /* ── Engineering Signals ── */
   .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 7px; }
   .chip  {
     font-size: 8.5pt; font-weight: 600; color: #1e3a8a;
     background: #eff6ff; border: 1px solid #bfdbfe;
     padding: 2px 9px; border-radius: 10px;
   }
-  .signal-list { margin: 0 0 0 14px; font-size: 9.5pt; color: #334155; }
+  .signal-list    { margin: 0 0 0 14px; font-size: 9.5pt; color: #334155; }
   .signal-list li { margin-bottom: 2px; }
 
+  /* ── Skills ── */
   .skill-row  { margin-bottom: 3px; font-size: 9.5pt; }
   .skill-cat  { font-weight: 700; color: #0f172a; margin-right: 5px; }
   .skill-list { color: #334155; }
 
+  /* ── Experience ── */
   .exp-entry   { margin-bottom: 10px; }
   .exp-header  { display: flex; justify-content: space-between; align-items: baseline; }
   .exp-role    { font-size: 10.5pt; font-weight: 700; color: #0f172a; }
@@ -365,25 +561,25 @@ function buildResumeHtml({
   .exp-bullets { margin: 3px 0 0 15px; font-size: 9.5pt; color: #334155; line-height: 1.5; }
   .exp-bullets li { margin-bottom: 1px; }
 
+  /* ── Education ── */
   .edu-entry       { margin-bottom: 7px; }
   .edu-degree      { font-size: 10pt; font-weight: 600; color: #0f172a; }
   .edu-institution { font-size: 9.5pt; color: #475569; margin-top: 1px; }
 
+  /* ── Projects ── */
   .project         { margin-bottom: 11px; }
   .project-name    { font-size: 10.5pt; font-weight: 700; color: #0f172a; }
   .project-arch    { font-size: 9pt; color: #1e3a8a; font-weight: 600; margin-top: 1px; }
   .project-hook    { font-size: 9.5pt; color: #334155; margin-top: 3px; line-height: 1.5; }
   .project-bullets { margin: 3px 0 0 15px; font-size: 9.5pt; color: #334155; line-height: 1.5; }
   .project-bullets li { margin-bottom: 1px; }
-  .project-techs   { font-size: 8.5pt; color: #64748b; margin-top: 4px; }
+  .project-techs   { font-size: 8.5pt; color: #475569; margin-top: 4px; }
+  .project-techs strong { color: #0f172a; }
 
+  /* ── Footer ── */
   .footer {
-    margin-top: 16px;
-    border-top: 1px solid #e2e8f0;
-    padding-top: 7px;
-    font-size: 8pt;
-    color: #94a3b8;
-    text-align: center;
+    margin-top: 14px; border-top: 1px solid #e2e8f0;
+    padding-top: 6px; font-size: 8pt; color: #94a3b8; text-align: center;
   }
 </style>
 </head>
@@ -392,7 +588,7 @@ function buildResumeHtml({
 
   <div class="header">
     <div class="name">${esc(displayName)}</div>
-    ${displayHeadline ? `<div class="role">${esc(displayHeadline)}</div>` : ''}
+    ${displayRoleLine ? `<div class="role">${esc(displayRoleLine)}</div>` : ''}
     ${contactParts.length ? `<div class="contact">${contactParts.join('<span class="contact-sep">&middot;</span>')}</div>` : ''}
   </div>
 
@@ -401,6 +597,10 @@ function buildResumeHtml({
     <div class="section-title">Professional Summary</div>
     <p class="summary">${esc(summary)}</p>
   </div>` : ''}
+
+  ${targetRoleHtml}
+
+  ${careerHighlightsHtml}
 
   ${signalsHtml}
 

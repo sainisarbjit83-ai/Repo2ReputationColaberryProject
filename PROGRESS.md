@@ -21,7 +21,7 @@
 
 ## Repository Phase
 
-**Current Phase: M8 — Active Development (Post-Commit + Uncommitted Changes)**
+**Current Phase: M11 — Active Development (PDF Resume Quality Overhaul — Uncommitted)**
 
 | Layer | Status |
 |-------|--------|
@@ -85,7 +85,7 @@ New Analysis Panel tabs: Overview (Executive Intelligence Dashboard), Architectu
 - Public portfolio redesign: sidebar layout, Core Technologies, Engineering Skills sections
 - README `docs/images/demo.gif` added
 
-### M8 — PDF Overhaul, AI Insights, Smart Media Upload *(last committed)*
+### M8 — PDF Overhaul, AI Insights, Smart Media Upload *(committed: 4abc681)*
 
 **Files modified:**
 - `backend/routes/portfolios.js` — PDF route reads `profile` + `linkedin` from `content_json`; passes `experience`, `education`, `name` to `pdfGenerator`; GET route exposes `repoMedia`
@@ -97,32 +97,72 @@ New Analysis Panel tabs: Overview (Executive Intelligence Dashboard), Architectu
 - `frontend/vite.config.js` — Vitest config added (`globals: true`, `environment: 'node'`)
 - `backend/package.json` — Puppeteer added as dependency
 
+### M9 — Deep Analysis Integration, Bug Fixes, LinkedIn Navigation *(committed)*
+
+**Files modified:**
+- `backend/routes/repos.js` — `generate-readme` gate now passes if either basic OR deep analysis exists; `row` defaults to `{}` to avoid crash on deep-only repos
+- `backend/routes/portfolios.js` — narrative route filter changed from `AND a.skills_json IS NOT NULL` → `AND (a.skills_json IS NOT NULL OR da.intelligence_json IS NOT NULL)`, fixing "No completed analyses found" for deep-analysis-only repos; added `code_intelligence_json` to narrative query; mapping falls back to deep analysis fields for `whatItDoes` and `technologies`
+- `frontend/src/PublicPortfolio.jsx` — added `ensureHttps()` helper; applied to all 3 LinkedIn href locations (sidebar, Let's Connect button, mobile section) — fixed LinkedIn button not navigating to correct URL
+- `frontend/src/PortfolioBuilder.jsx` — `loadRepos()` now checks ONLY deep analysis (`/api/deep-analysis/:id/latest`); repos with only deep analysis now appear correctly in Portfolio Builder
+
+### M10 — Resume PDF Deep Analysis Integration *(committed)*
+
+**Files modified:**
+- `backend/services/pdfGenerator.js` — full rewrite integrating deep analysis data:
+  - `TECH_CATEGORIES`, `TECH_LABELS`, `PATTERN_LABELS`, `ROLE_MAP` lookup tables added
+  - `inferRoleTitle(repos, careerSignals)` — derives role title from career_signals or patternsInferred
+  - `aggregateSkills(repos, topSkills)` — collects languages from primaryLanguage, technologies from code_intelligence_json across repos
+  - `buildEngineeringSignals(repos)` — patternsInferred → chips, aiFeatures, strengths
+  - `buildProjectBlocks(projects, repos)` — arch patterns, impact bullets, tech stack per repo
+  - `buildSummary(narrative, repos)` — used hookSentence (project-focused — known limitation, fixed in M11)
+- `backend/routes/portfolios.js` — PDF route LEFT JOIN LATERAL on `deep_analyses` for `intelligence_json`, `inference_json`, `code_intelligence_json`; passes `careerSignals` and per-repo deep analysis to pdfGenerator
+
+**Known issues identified after M10 (addressed in M11):**
+- `inferRoleTitle()` returned `careerSignals[0]` directly (the object `{ domain, score }`), causing `[object Object]` below candidate name — because `career_signals` stores objects not strings
+- `buildSummary()` used `hookSentence` which is repository-focused ("A Express + Prisma-powered API service…") not developer-focused
+- `buildProjectBlocks()` sliced before deduplication; limit was 8 instead of 6; arch patterns used raw `split('_')` instead of canonical labels
+
+### M11 — Resume PDF Quality Overhaul *(2026-06-15)*
+
+**Files modified:**
+- `backend/services/pdfGenerator.js` — complete rewrite addressing all identified quality issues:
+
+**P0 — Critical bug fixes:**
+- `inferRoleTitle()`: now handles `careerSignals` as `[{domain, score}]` objects AND legacy strings; sorts by `.score` descending, extracts `.domain` — fixes `[object Object]` below candidate name
+- `buildProjectBlocks()`: deduplicates technologies before slicing (`[...new Set([...techs, ...frameworks])]`), limit reduced to 6; added `CI_ARCH_LABELS` map for human-readable arch pattern labels (e.g., `rest_api` → "RESTful API" instead of "Rest Api")
+
+**P1 — Person-focused Professional Summary:**
+- `buildPersonSummary(repos)` replaces `buildSummary()` entirely
+- Sentence 1: `"[Level] [Role] with experience building [context from patternsInferred]"`
+- Sentence 2: `"Skilled in [top 5 technologies aggregated across all repos]"`
+- Sentence 3: `"Demonstrated expertise in [top 3 PATTERN_LABELS signals]"` or first strength
+- Derives `engineeringLevel` (`junior/mid/senior`) from `inference.overallAssessment.engineeringLevel`
+
+**P2 — New "Target Role" section:**
+- `buildTargetRoleHtml(repos, careerSignals)` added
+- Shows Primary Role (from `careerSignals` highest score `.domain`) + Engineering Level (from `engineeringLevel` → "Entry Level"/"Mid-Level"/"Senior")
+- Appears after Professional Summary
+
+**P3 — New "Career Highlights" section:**
+- `buildCareerHighlightsHtml(repos, experience)` added
+- Calculates years of experience from LinkedIn `experience[].startDate` (earliest date to now)
+- Maps `patternsInferred` → highlight labels via `HIGHLIGHT_MAP` (AI/LLM Orchestration, RAG Pipeline, Full Stack Development, etc.)
+- Appends AI features not already represented
+- Shows at most 7 checkmark bullets
+
+**P4 — New lookup table:**
+- `CI_ARCH_LABELS` map: 30 code intelligence architecture pattern keys → human-readable labels (covers REST API, JWT auth, ORM, vector databases, LLM orchestration, CI/CD, etc.)
+
+**Section order (updated):** Header → Professional Summary → Target Role → Career Highlights → Engineering Signals → Experience → Education → Technical Skills → Projects → Footer
+
 ---
 
-## Uncommitted Changes (Current Session — 2026-06-10)
+## Uncommitted Changes (Current Session — 2026-06-15)
 
-These changes exist locally and have **not been committed**:
+Changes in this session that have **not been committed yet**:
 
-### `backend/routes/repos.js`
-- `POST /:repositoryId/generate-readme` route upgraded:
-  - Accepts `{ mediaUrls: [{ label, url }] }` from request body
-  - Queries `deep_analyses` for `intelligence_json`, `inference_json`, `code_intelligence_json` in parallel with basic analysis
-  - Gate changed: fails only if **neither** basic nor deep analysis exists (previously failed if basic analysis absent, blocking repos with only deep analysis)
-  - Passes enriched `analysis` object + `mediaUrls` to `generateReadme()`
-
-### `backend/services/openai.js`
-- `README_SYSTEM_PROMPT` — complete rewrite:
-  - 5 absolute rules enforced (no hedging, no placeholders, no empty sections, evidence-based only, authoritative tone)
-  - New section structure: Executive Summary, Business Problem, Solution, Key Features, Architecture Overview, Technology Stack, Technical Highlights, Demonstration, Installation, Usage
-  - Each section has explicit skip condition if data insufficient
-- `buildReadmeUserPrompt()` — restructured with labeled data blocks (`--- WHAT IT DOES ---`, etc.); bullets for capabilities/differentiators/impacts/patterns; media section explicitly says "omit Demonstration section" when no URLs
-- `generateReadme()` — model upgraded from `gpt-4o-mini` → `gpt-4o`; temperature reduced 0.4 → 0.3; max_tokens increased 1500 → 2500
-
-### `frontend/src/AnalysisPanel.jsx`
-- README tab added to `V2AnalysisDetail` *(in progress — partially implemented, not yet verified)*
-
-### `frontend/src/Header.jsx`
-- Unknown change (not yet reviewed in this session)
+### `backend/services/pdfGenerator.js` *(M11 — complete rewrite)*
+All M11 changes described above. This is the only file changed in this session.
 
 ---
 
@@ -255,4 +295,4 @@ For each feature to be considered complete:
 
 ---
 
-*Last updated: 2026-06-10 — Session covering M8 uncommitted changes: README generator improvements (deep analysis integration, improved prompts, gpt-4o upgrade), generate-readme gate fix, and README tab UI in AnalysisPanel.*
+*Last updated: 2026-06-15 — M11: complete pdfGenerator.js rewrite. Fixes [object Object] role title bug, adds person-focused Professional Summary, Target Role section, Career Highlights section, and CI arch pattern label map. M9/M10 documented retrospectively.*
