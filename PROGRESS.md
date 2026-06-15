@@ -21,7 +21,7 @@
 
 ## Repository Phase
 
-**Current Phase: M12 — Active Development (PDF Resume Final Polish — Uncommitted)**
+**Current Phase: M13 — Active Development (PDF Resume Redesign to Traditional Format — Uncommitted)**
 
 | Layer | Status |
 |-------|--------|
@@ -301,4 +301,4 @@ For each feature to be considered complete:
 
 ---
 
-*Last updated: 2026-06-15 — M12: resume PDF final polish. Removed Target Role section, moved Engineering Level into Career Highlights, expanded summary to 4 sentences with years of experience, added ORM skills category, humanized CI arch pattern labels.*
+*Last updated: 2026-06-15 — M13: complete PDF resume redesign. Removed all AI-assessment sections (Engineering Signals, Career Highlights, Target Role). Restructured as traditional professional resume: Summary → Experience → Education → Skills → Projects. Rewrote summary with industry-breadth and AI-first tech ordering. Replaced generic project bullets with technicalDifferentiation + operationalCapabilities + synthesized arch accomplishments. Added implied languages (SQL, JavaScript) and pattern-derived AI/ML skills.*
