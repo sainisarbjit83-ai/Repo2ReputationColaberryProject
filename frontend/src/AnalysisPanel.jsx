@@ -2664,6 +2664,32 @@ function V2AnalysisDetail({ repo, analysis, onBack, onLogout, onReanalyzed }) {
   const [reanalyzeError,  setReanalyzeError]  = useState(null)
   const [reanalyzeQueued, setReanalyzeQueued] = useState(false)
   const [activeTab,       setActiveTab]       = useState('overview')
+  const [readmeContent,   setReadmeContent]   = useState('')
+  const [readmeGenerating, setReadmeGenerating] = useState(false)
+  const [readmeError,     setReadmeError]     = useState(null)
+  const [mediaInputs,     setMediaInputs]     = useState([{ label: 'Demo', url: '' }])
+
+  async function handleGenerateReadme() {
+    setReadmeGenerating(true)
+    setReadmeError(null)
+    try {
+      const mediaUrls = mediaInputs.filter(m => m.url.trim())
+      const res  = await authFetch(`${BASE_URL}/api/repos/${repo.id}/generate-readme`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mediaUrls }),
+      }, onLogout)
+      const json = await res.json()
+      if (json?.success) {
+        setReadmeContent(json.data.readme)
+      } else {
+        setReadmeError(json?.error?.message || 'Failed to generate README.')
+      }
+    } catch (err) {
+      setReadmeError(`Could not reach server: ${err.message}`)
+    }
+    setReadmeGenerating(false)
+  }
 
   const lang       = repo.primary_language || repo.language
   const stars      = (repo.stars_count ?? repo.stargazers_count ?? 0).toLocaleString()
@@ -2820,6 +2846,7 @@ function V2AnalysisDetail({ repo, analysis, onBack, onLogout, onReanalyzed }) {
           { id: 'architecture',      label: 'Architecture',      icon: '🏛' },
           { id: 'quality',           label: 'Quality',           icon: '✦' },
           { id: 'portfolio-report',  label: 'Portfolio Report',  icon: '📋' },
+          { id: 'readme',            label: 'README',            icon: '📝' },
         ].map(tab => (
           <button
             key={tab.id}
@@ -3128,6 +3155,117 @@ function V2AnalysisDetail({ repo, analysis, onBack, onLogout, onReanalyzed }) {
           inference={inference}
           codeIntelligence={codeIntelligence}
         />
+      )}
+
+      {/* ════════════════════════════════════════
+          README TAB
+          ════════════════════════════════════════ */}
+      {activeTab === 'readme' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+          {/* Header */}
+          <div style={{ padding: '14px 20px', background: 'linear-gradient(135deg, #064e3b 0%, #065f46 100%)', borderRadius: '12px' }}>
+            <p style={{ margin: 0, fontSize: '16px', fontWeight: '800', color: 'white' }}>README Generator</p>
+            <p style={{ margin: '3px 0 0', fontSize: '12px', color: '#6ee7b7' }}>AI-powered README draft using deep analysis + your media assets</p>
+          </div>
+
+          {/* Media URL inputs */}
+          <div style={{ border: '1px solid #e5e7eb', borderRadius: '12px', padding: '16px', backgroundColor: 'white' }}>
+            <p style={{ margin: '0 0 12px', fontSize: '13px', fontWeight: '700', color: '#111827' }}>Demo / Screenshot URLs (optional)</p>
+            <p style={{ margin: '0 0 12px', fontSize: '12px', color: '#6b7280' }}>
+              Paste raw image or GIF URLs — these will be embedded in a Demo section. Use the Project Media tab in Portfolio Builder to get raw URLs.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {mediaInputs.map((m, i) => (
+                <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    type="text"
+                    placeholder="Label (e.g. Demo)"
+                    value={m.label}
+                    onChange={e => {
+                      const next = [...mediaInputs]
+                      next[i] = { ...next[i], label: e.target.value }
+                      setMediaInputs(next)
+                    }}
+                    style={{ width: '120px', padding: '7px 10px', borderRadius: '7px', border: '1px solid #d1d5db', fontSize: '13px' }}
+                  />
+                  <input
+                    type="url"
+                    placeholder="https://raw.githubusercontent.com/..."
+                    value={m.url}
+                    onChange={e => {
+                      const next = [...mediaInputs]
+                      next[i] = { ...next[i], url: e.target.value.trim() }
+                      setMediaInputs(next)
+                    }}
+                    style={{ flex: 1, padding: '7px 10px', borderRadius: '7px', border: '1px solid #d1d5db', fontSize: '13px' }}
+                  />
+                  {mediaInputs.length > 1 && (
+                    <button
+                      onClick={() => setMediaInputs(mediaInputs.filter((_, j) => j !== i))}
+                      style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '16px', padding: '0 4px' }}
+                    >×</button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => setMediaInputs([...mediaInputs, { label: '', url: '' }])}
+              style={{ marginTop: '10px', background: 'none', border: '1px dashed #d1d5db', borderRadius: '7px', padding: '6px 14px', fontSize: '12px', color: '#6b7280', cursor: 'pointer' }}
+            >
+              + Add another URL
+            </button>
+          </div>
+
+          {/* Generate button */}
+          <button
+            onClick={handleGenerateReadme}
+            disabled={readmeGenerating}
+            style={{ padding: '11px 20px', borderRadius: '10px', border: 'none', backgroundColor: readmeGenerating ? '#6ee7b7' : '#059669', color: 'white', fontWeight: '700', fontSize: '14px', cursor: readmeGenerating ? 'not-allowed' : 'pointer' }}
+          >
+            {readmeGenerating ? 'Generating…' : '📝 Generate README'}
+          </button>
+
+          {readmeError && (
+            <div style={{ padding: '10px 14px', borderRadius: '8px', backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: '13px' }}>
+              {readmeError}
+            </div>
+          )}
+
+          {/* Output */}
+          {readmeContent && (
+            <div style={{ border: '1px solid #e5e7eb', borderRadius: '12px', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                <p style={{ margin: 0, fontSize: '13px', fontWeight: '700', color: '#111827' }}>Generated README.md</p>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(readmeContent)}
+                    style={{ padding: '5px 12px', borderRadius: '7px', border: '1px solid #d1d5db', backgroundColor: 'white', fontSize: '12px', fontWeight: '600', cursor: 'pointer', color: '#374151' }}
+                  >
+                    Copy
+                  </button>
+                  <button
+                    onClick={() => {
+                      const blob = new Blob([readmeContent], { type: 'text/plain' })
+                      const url  = URL.createObjectURL(blob)
+                      const a    = document.createElement('a')
+                      a.href     = url
+                      a.download = 'README.md'
+                      a.click()
+                      URL.revokeObjectURL(url)
+                    }}
+                    style={{ padding: '5px 12px', borderRadius: '7px', border: '1px solid #d1d5db', backgroundColor: 'white', fontSize: '12px', fontWeight: '600', cursor: 'pointer', color: '#374151' }}
+                  >
+                    Download
+                  </button>
+                </div>
+              </div>
+              <pre style={{ margin: 0, padding: '16px', fontSize: '12px', lineHeight: '1.65', color: '#374151', whiteSpace: 'pre-wrap', wordBreak: 'break-word', backgroundColor: 'white', maxHeight: '600px', overflowY: 'auto' }}>
+                {readmeContent}
+              </pre>
+            </div>
+          )}
+        </div>
       )}
 
     </div>

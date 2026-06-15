@@ -471,7 +471,7 @@ router.post('/:id/generate-narrative', authMiddleware, async (req, res) => {
     const reposResult = await pool.query(
       `SELECT r.name, r.description,
               a.skills_json, a.summary_json,
-              da.inference_json, da.intelligence_json
+              da.inference_json, da.intelligence_json, da.code_intelligence_json
        FROM repositories r
        LEFT JOIN LATERAL (
          SELECT skills_json, summary_json
@@ -480,19 +480,20 @@ router.post('/:id/generate-narrative', authMiddleware, async (req, res) => {
          ORDER BY created_at DESC LIMIT 1
        ) a ON true
        LEFT JOIN LATERAL (
-         SELECT inference_json, intelligence_json
+         SELECT inference_json, intelligence_json, code_intelligence_json
          FROM deep_analyses
          WHERE repository_id = r.id AND status IN ('completed', 'partial')
          ORDER BY completed_at DESC LIMIT 1
        ) da ON true
-       WHERE r.id = ANY($1::uuid[]) AND r.user_id = $2 AND a.skills_json IS NOT NULL`,
+       WHERE r.id = ANY($1::uuid[]) AND r.user_id = $2
+         AND (a.skills_json IS NOT NULL OR da.intelligence_json IS NOT NULL)`,
       [repositoryIds, userId]
     );
 
     if (reposResult.rows.length === 0) {
       return res.status(400).json({
         success: false,
-        error: { code: 'NO_ANALYSES', message: 'No completed analyses found for this portfolio.' },
+        error: { code: 'NO_ANALYSES', message: 'No completed analyses found for this portfolio. Run deep analysis on your repos first.' },
       });
     }
 
@@ -507,13 +508,14 @@ router.post('/:id/generate-narrative', authMiddleware, async (req, res) => {
       [JSON.stringify(updatedContent), id]
     );
 
-    // Build input array for the narrative service.
-    // Only pass structured capability signals — no raw project summaries or descriptions
-    // that could leak into the About Me narrative.
+    // Build input for narrative generation — uses deep analysis when available, falls back to basic
     const analyses = reposResult.rows.map(r => ({
       repoName:     r.name,
-      whatItDoes:   r.summary_json?.what_it_does || '',
-      technologies: r.skills_json || [],
+      whatItDoes:   r.summary_json?.what_it_does
+                      || r.intelligence_json?.executiveSummary?.overview
+                      || '',
+      technologies: r.skills_json
+                      || (r.code_intelligence_json?.technologies || []).map(t => ({ name: t, category: 'Other', confidence: 1 })),
       inference:    r.inference_json    || null,
       intelligence: r.intelligence_json || null,
     }));

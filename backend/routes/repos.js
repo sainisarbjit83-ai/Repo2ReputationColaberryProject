@@ -307,6 +307,7 @@ router.get('/import/:jobId', authMiddleware, async (req, res) => {
 router.post('/:repositoryId/generate-readme', authMiddleware, async (req, res) => {
   const { id: userId } = req.user;
   const { repositoryId } = req.params;
+  const { mediaUrls = [] } = req.body; // [{ label: string, url: string }]
 
   try {
     const repoResult = await pool.query(
@@ -321,32 +322,51 @@ router.post('/:repositoryId/generate-readme', authMiddleware, async (req, res) =
 
     const repo = repoResult.rows[0];
 
-    const analysisResult = await pool.query(
-      `SELECT skills_json, summary_json, confidence_score
-       FROM analyses
-       WHERE repository_id = $1 AND status = 'completed'
-       ORDER BY created_at DESC LIMIT 1`,
-      [repositoryId]
-    );
+    const [analysisResult, deepResult] = await Promise.all([
+      pool.query(
+        `SELECT skills_json, summary_json, confidence_score
+         FROM analyses
+         WHERE repository_id = $1 AND status = 'completed'
+         ORDER BY created_at DESC LIMIT 1`,
+        [repositoryId]
+      ),
+      pool.query(
+        `SELECT intelligence_json, inference_json, code_intelligence_json
+         FROM deep_analyses
+         WHERE repository_id = $1 AND status IN ('completed', 'partial')
+         ORDER BY completed_at DESC LIMIT 1`,
+        [repositoryId]
+      ),
+    ]);
 
-    if (!analysisResult.rows[0]) {
+    if (!analysisResult.rows[0] && !deepResult.rows[0]) {
       return res.status(400).json({
         success: false,
         error: { code: 'NO_ANALYSIS', message: 'Run an analysis on this repository before generating a README.' },
       });
     }
 
-    const row = analysisResult.rows[0];
+    const deep    = deepResult.rows[0] || {};
+    const intel   = deep.intelligence_json;
+    const infer   = deep.inference_json;
+    const codeInt = deep.code_intelligence_json;
+
+    const row = analysisResult.rows[0] || {};
     const analysis = {
-      technologies:  row.skills_json   || [],
-      summary:       row.summary_json?.text,
-      what_it_does:  row.summary_json?.what_it_does,
-      highlights:    row.summary_json?.highlights,
-      key_takeaways: row.summary_json?.key_takeaways || [],
+      technologies:             row.skills_json   || [],
+      summary:                  row.summary_json?.text,
+      what_it_does:             row.summary_json?.what_it_does,
+      highlights:               row.summary_json?.highlights,
+      key_takeaways:            row.summary_json?.key_takeaways || [],
+      probableDomain:           intel?.businessValue?.probableDomain           || null,
+      operationalCapabilities:  intel?.businessValue?.operationalCapabilities  || [],
+      technicalDifferentiation: intel?.portfolioNarrative?.technicalDifferentiation || [],
+      impactStatements:         intel?.resume?.impactStatements                || [],
+      patternsInferred:         infer?.patternsInferred                        || [],
+      architecturePatterns:     codeInt?.architecturePatterns                  || [],
     };
 
-    const readme = await generateReadme(repo, analysis);
-
+    const readme = await generateReadme(repo, analysis, mediaUrls);
     return res.status(200).json({ success: true, data: { readme } });
   } catch (err) {
     console.error('[repos] generate-readme error:', err.message);

@@ -255,61 +255,85 @@ async function generatePortfolioNarrative(analyses) {
   return JSON.parse(raw);
 }
 
-const README_SYSTEM_PROMPT = `You are a technical writer creating a professional README.md for a GitHub repository.
+const README_SYSTEM_PROMPT = `You are a senior technical writer producing a professional README.md that provides genuine recruiter value.
 
-Rules:
-- Base every claim strictly on the provided analysis data — do not invent features, libraries, or usage steps
-- Write in clear, developer-friendly markdown
-- If installation or usage details are not in the analysis, write a sensible placeholder with a comment like "<!-- update with actual steps -->"
-- Do not add badges, shields.io links, or license sections unless explicitly in the data
-- Output raw markdown only — no code fences wrapping the whole document
+ABSOLUTE RULES — violating any of these will make the README useless:
+1. Never write "This repository appears to be...", "It seems like...", or any hedged/speculative language.
+2. Never insert placeholder comments like "<!-- update with actual steps -->". If you cannot write a real sentence, omit the section entirely.
+3. Never generate an empty section. If the data does not support a section, skip it completely — no heading, no placeholder.
+4. Every factual claim must be grounded in the analysis data provided. Do not invent technologies, features, or capabilities.
+5. Write with confidence and authority, as if you built the project.
+6. Output raw markdown only — no outer code fence wrapping the entire document.
 
-Structure the README with these sections in order:
-# <repo name>
-## Overview
-## Features
-## Tech Stack
-## Getting Started
-### Prerequisites
-### Installation
-## Usage
-## Contributing`;
+SECTION RULES:
+- ## Executive Summary — 2–3 sentences: what it does, who it serves, why it exists. Derived from hook sentence, overview, and business domain.
+- ## Business Problem — the concrete challenge being solved. Skip if no domain or problem context is available.
+- ## Solution — how the application solves the problem. Use operational capabilities and technical differentiation.
+- ## Key Features — bullet list of features with evidence in the analysis. No generic items like "User authentication" unless the auth pattern is explicitly detected.
+- ## Architecture Overview — describe frontend, backend, database, and API layers based on detected domains and architecture patterns. Skip tiers not present.
+- ## Technology Stack — grouped list of detected technologies only. No invented tools.
+- ## Technical Highlights — advanced implementation details drawn from impact statements, architecture patterns, and engineering patterns. Examples: JWT auth, RAG pipeline, event-driven design, CI/CD, containerization. Only include patterns with evidence.
+- ## Demonstration — include ONLY if media assets are provided. Embed each as ![label](url). Skip this section entirely if no media.
+- ## Installation — include ONLY if primary language and enough structural evidence exists to write real steps. Skip otherwise.
+- ## Usage — include ONLY if capabilities support real usage examples. Skip otherwise.
 
-function buildReadmeUserPrompt(repo, analysis) {
+TONE: Professional open-source project. Confident, specific, recruiter-friendly.`;
+
+function buildReadmeUserPrompt(repo, analysis, mediaUrls = []) {
   const techs = (analysis.technologies || [])
-    .map(t => `  - ${t.name} (${t.category}, confidence: ${Math.round(t.confidence * 100)}%)`)
+    .map(t => `  - ${t.name} (${t.category})`)
     .join('\n');
 
-  const takeaways = (analysis.key_takeaways || [])
-    .map(t => `  - [${t.status}] ${t.text}`)
-    .join('\n');
+  const capabilities    = (analysis.operationalCapabilities  || []).slice(0, 6).map(c => `  - ${c}`).join('\n');
+  const differentiators = (analysis.technicalDifferentiation || []).slice(0, 5).map(d => `  - ${d}`).join('\n');
+  const impacts         = (analysis.impactStatements         || []).slice(0, 5).map(i => `  - ${i}`).join('\n');
+  const patterns        = (analysis.patternsInferred         || []).slice(0, 6).map(p => `  - ${p}`).join('\n');
+  const architecture    = (analysis.architecturePatterns     || []).slice(0, 8).map(a => `  - ${a}`).join('\n');
 
-  return `Repository name: ${repo.name}
+  const mediaSection = mediaUrls.filter(m => m.url?.trim()).length > 0
+    ? `\nMedia assets (embed in ## Demonstration section):\n${mediaUrls.filter(m => m.url?.trim()).map(m => `  - label: "${m.label || 'Demo'}", url: ${m.url}`).join('\n')}`
+    : '\nNo media assets provided — omit the ## Demonstration section entirely.';
+
+  return `Repository: ${repo.name}
 Primary language: ${repo.primary_language || 'Unknown'}
 Topics/tags: ${Array.isArray(repo.topics) ? repo.topics.join(', ') : (repo.topics || 'None')}
+Business domain: ${analysis.probableDomain || 'Not specified'}
 
-What it does: ${analysis.what_it_does || 'Not specified'}
-Summary: ${analysis.summary || 'Not specified'}
-Purpose: ${analysis.highlights?.purpose || 'Not specified'}
-Strengths: ${analysis.highlights?.strengths || 'Not specified'}
-Use cases: ${analysis.highlights?.use_cases || 'Not specified'}
+--- WHAT IT DOES ---
+${analysis.what_it_does || analysis.summary || 'Not specified'}
 
-Technologies detected:
-${techs || '  - None detected'}
+--- NARRATIVE / HOOK ---
+${analysis.highlights?.purpose || analysis.summary || 'Not specified'}
 
-Key takeaways:
-${takeaways || '  - None'}`;
+--- OPERATIONAL CAPABILITIES ---
+${capabilities || '  - Not specified'}
+
+--- TECHNICAL DIFFERENTIATORS ---
+${differentiators || '  - Not specified'}
+
+--- IMPACT STATEMENTS ---
+${impacts || '  - Not specified'}
+
+--- INFERRED ENGINEERING PATTERNS ---
+${patterns || '  - Not specified'}
+
+--- ARCHITECTURE PATTERNS (detected) ---
+${architecture || '  - Not specified'}
+
+--- TECHNOLOGIES DETECTED ---
+${techs || '  - None'}
+${mediaSection}`;
 }
 
-async function generateReadme(repo, analysis) {
+async function generateReadme(repo, analysis, mediaUrls = []) {
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: 'gpt-4o',
     messages: [
       { role: 'system', content: README_SYSTEM_PROMPT },
-      { role: 'user',   content: buildReadmeUserPrompt(repo, analysis) },
+      { role: 'user',   content: buildReadmeUserPrompt(repo, analysis, mediaUrls) },
     ],
-    temperature: 0.4,
-    max_tokens: 1500,
+    temperature: 0.3,
+    max_tokens: 2500,
   });
 
   return response.choices[0].message.content.trim();

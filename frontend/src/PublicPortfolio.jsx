@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 import { BASE_URL } from './api'
 
+function ensureHttps(url) {
+  if (!url) return url
+  if (url.startsWith('http://') || url.startsWith('https://')) return url
+  return `https://${url}`
+}
+
 async function downloadPdf(slug) {
   const res = await fetch(`${BASE_URL}/api/portfolios/public/${slug}/pdf`)
   if (!res.ok) throw new Error('PDF generation failed')
@@ -153,7 +159,7 @@ function Sidebar({ title, headline, topSkills, githubUsername, profile, engineer
           )}
           {profile?.linkedinUrl && (
             <Row icon="🔗">
-              <a href={profile.linkedinUrl} target="_blank" rel="noreferrer"
+              <a href={ensureHttps(profile.linkedinUrl)} target="_blank" rel="noreferrer"
                 style={{ color: A, fontSize: '12px', textDecoration: 'none', fontWeight: '500' }}>
                 LinkedIn
               </a>
@@ -1028,7 +1034,7 @@ export default function PublicPortfolio({ slug }) {
                   </a>
                 )}
                 {profile?.linkedinUrl && (
-                  <a href={profile.linkedinUrl} target="_blank" rel="noreferrer"
+                  <a href={ensureHttps(profile.linkedinUrl)} target="_blank" rel="noreferrer"
                     style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', backgroundColor: A, color: '#fff', textDecoration: 'none', border: 'none' }}>
                     LinkedIn →
                   </a>

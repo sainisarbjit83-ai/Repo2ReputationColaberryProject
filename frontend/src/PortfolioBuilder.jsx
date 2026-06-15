@@ -465,11 +465,25 @@ function PortfolioBuilder({ onLogout }) {
     setImportedRepos(repos)
 
     await Promise.all(repos.map(async repo => {
-      const aRes = await authFetch(`${BASE_URL}/api/analysis/repo/${repo.id}`, {}, onLogout)
-      if (!aRes) return
-      const aJson = await aRes.json()
-      if (aJson?.success) {
-        setAnalysisMap(prev => ({ ...prev, [repo.id]: aJson.data }))
+      const dRes = await authFetch(`${BASE_URL}/api/deep-analysis/${repo.id}/latest`, {}, onLogout)
+      if (!dRes) return
+      const dJson = await dRes.json()
+      if (dJson?.success && dJson.data.status === 'completed') {
+        const d = dJson.data
+        setAnalysisMap(prev => ({
+          ...prev,
+          [repo.id]: {
+            status:          'completed',
+            confidenceScore: d.confidenceScore,
+            technologies:    d.codeIntelligence?.technologies?.map(t => ({ name: t, category: 'Other', confidence: 1 })) || [],
+            summary:         d.intelligence?.executiveSummary?.overview || null,
+            highlights: {
+              purpose:   d.intelligence?.portfolioNarrative?.hookSentence || null,
+              strengths: d.inference?.strengths?.[0] || null,
+              use_cases: null,
+            },
+          },
+        }))
       }
     }))
 
@@ -802,7 +816,7 @@ function PortfolioBuilder({ onLogout }) {
 
   const analyzedRepos = importedRepos
     .filter(r => analysisMap[r.id]?.status === 'completed')
-    .sort((a, b) => (analysisMap[b.id]?.confidence_score ?? 0) - (analysisMap[a.id]?.confidence_score ?? 0))
+    .sort((a, b) => (analysisMap[b.id]?.confidenceScore ?? 0) - (analysisMap[a.id]?.confidenceScore ?? 0))
 
   // ── Step 4: Published ──────────────────────────────────────────────────────
   if (publicUrl) {
