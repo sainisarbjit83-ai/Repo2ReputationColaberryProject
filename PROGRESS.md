@@ -21,7 +21,7 @@
 
 ## Repository Phase
 
-**Current Phase: M14 — Active Development (PDF Resume Layout & Language Polish)**
+**Current Phase: M15 — Active Development (PDF Header Redesign — Centered, Professional Headline)**
 
 | Layer | Status |
 |-------|--------|
@@ -333,4 +333,21 @@ For each feature to be considered complete:
 
 ---
 
-*Last updated: 2026-06-15 — M14: PDF resume language and layout polish. Shortened SPEC_MAP phrases, tightened S4 summary, shortened arch bullets to action-first, added first-sentence + 85-char truncation to cleanProjectDescription(). CSS overhaul: flex skills layout, left-border section titles, improved spacing and typography hierarchy.*
+### M15 — PDF Header Redesign *(2026-06-15)*
+
+**Files modified:**
+- `backend/services/pdfGenerator.js`:
+  - Replaced `ROLE_MAP` with `DOMAIN_TO_TITLE` (career signal domain → professional job title) and `PATTERN_SECONDARY` (pattern → pipe-separated secondary specialization)
+  - Replaced `inferRoleTitle()` with `buildProfessionalHeadline()`: composes `"Senior AI Backend Engineer | Full-Stack Development"` format from engineering level + top career signal + secondary specialization; falls back to `profile.headline` if no signals present
+  - Added "Portfolio: " label prefix to `profile.website` in contact row
+  - CSS: `text-align: center` on `.header`; `.name` 22pt → 24pt; `.role` 11pt → 10.5pt + `letter-spacing: 0.5px`; `.contact` 9pt → 8.5pt + `margin-top: 8px`
+
+**Validation:**
+- Manual PDF re-generation required to verify headline output for specific user
+
+**Known gaps:**
+- `DOMAIN_TO_TITLE` keys must match exact strings returned by OpenAI in `career_signals[].domain`; any mismatch falls back to raw domain value (acceptable — still readable)
+
+---
+
+*Last updated: 2026-06-15 — M15: PDF header centered, professional headline replaces raw career signal domain, Portfolio URL labeled.*

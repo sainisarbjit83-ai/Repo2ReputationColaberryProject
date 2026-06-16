@@ -108,15 +108,29 @@ const CI_ARCH_LABELS = {
   rest_routing:            'REST API Routing',
 };
 
-// patternsInferred → job title
-const ROLE_MAP = {
-  ai_orchestrated_system:           'AI Engineer',
-  retrieval_augmented_architecture: 'AI Engineer',
-  ai_integration_confirmed:         'Full Stack AI Engineer',
-  fullstack_architecture_confirmed: 'Full Stack Engineer',
-  production_ready_backend:         'Backend Engineer',
-  enterprise_backend_patterns:      'Backend Engineer',
-  modular_frontend_architecture:    'Frontend Engineer',
+// career_signals domain → professional job title noun
+const DOMAIN_TO_TITLE = {
+  'AI Engineering':           'AI Backend Engineer',
+  'Full Stack Development':   'Full-Stack Developer',
+  'Backend Development':      'Backend Engineer',
+  'Frontend Development':     'Frontend Engineer',
+  'Mobile Development':       'Mobile Developer',
+  'Data Engineering':         'Data Engineer',
+  'DevOps Engineering':       'DevOps Engineer',
+  'System Architecture':      'Software Architect',
+  'Cloud Engineering':        'Cloud Engineer',
+  'Security Engineering':     'Security Engineer',
+};
+
+// patternsInferred → secondary headline specialization (shown after pipe)
+const PATTERN_SECONDARY = {
+  fullstack_architecture_confirmed:   'Full-Stack Development',
+  ai_orchestrated_system:             'AI Systems',
+  retrieval_augmented_architecture:   'RAG Development',
+  production_ready_backend:           'Backend Engineering',
+  enterprise_backend_patterns:        'Enterprise Backend',
+  modular_frontend_architecture:      'Frontend Development',
+  infrastructure_as_code_present:     'Cloud Infrastructure',
 };
 
 // patternsInferred → concise noun-phrase specialization for summary sentence 2
@@ -180,19 +194,36 @@ function getYearsExperience(experience) {
   return years > 0 ? years : null;
 }
 
-function inferRoleTitle(repos, careerSignals) {
-  if (Array.isArray(careerSignals) && careerSignals.length) {
-    const first = careerSignals[0];
-    if (typeof first === 'string') return first;
-    if (first?.domain) {
-      return [...careerSignals].filter(s => s?.domain).sort((a, b) => (b.score || 0) - (a.score || 0))[0].domain;
+function buildProfessionalHeadline(repos, careerSignals, experience, fallbackHeadline) {
+  // Engineering level prefix (omit "Junior" — sounds entry-level on a resume)
+  const engLevel = getEngLevel(repos);
+  const levelLabel = engLevel === 'senior' ? 'Senior' : engLevel === 'mid' ? 'Mid-Level' : null;
+
+  // Primary title from top career signal domain
+  const sorted = Array.isArray(careerSignals)
+    ? [...careerSignals].filter(s => s?.domain).sort((a, b) => (b.score || 0) - (a.score || 0))
+    : [];
+  const topDomain  = sorted[0]?.domain || null;
+  const primaryTitle = topDomain ? (DOMAIN_TO_TITLE[topDomain] || topDomain) : null;
+
+  if (!primaryTitle) return fallbackHeadline || null;
+
+  // Secondary specialization: prefer second career signal, else first matching pattern
+  const secondDomain = sorted[1]?.domain || null;
+  let secondary = secondDomain ? (DOMAIN_TO_TITLE[secondDomain] || null) : null;
+  if (!secondary) {
+    const patterns = allPatterns(repos);
+    for (const [pat, label] of Object.entries(PATTERN_SECONDARY)) {
+      if (patterns.includes(pat) && label !== primaryTitle) { secondary = label; break; }
     }
   }
-  const patterns = allPatterns(repos);
-  for (const [pat, role] of Object.entries(ROLE_MAP)) {
-    if (patterns.includes(pat)) return role;
+  // Suppress secondary when it's redundant with the primary title
+  if (secondary && primaryTitle.toLowerCase().includes(secondary.toLowerCase().split(' ')[0].toLowerCase())) {
+    secondary = null;
   }
-  return null;
+
+  const parts = [levelLabel, primaryTitle].filter(Boolean).join(' ');
+  return secondary ? `${parts}  |  ${secondary}` : parts;
 }
 
 function extractIndustries(experience) {
@@ -477,21 +508,20 @@ function buildResumeHtml({
   careerSignals = [], repos = [], githubUsername,
   profile = {}, experience = [], education = [],
 }) {
-  const roleTitle     = inferRoleTitle(repos, careerSignals);
   const patterns      = allPatterns(repos);
   const skillsByCategory = aggregateSkills(repos, topSkills, patterns);
   const projectBlocks = buildProjectBlocks(projects, repos);
   const summary       = buildPersonSummary(repos, experience, careerSignals);
 
   const displayName     = profile.fullName || title || 'Developer Portfolio';
-  const displayRoleLine = roleTitle || profile.headline || headline || null;
+  const displayRoleLine = buildProfessionalHeadline(repos, careerSignals, experience, profile.headline || headline);
 
   const contactParts = [
     profile.email       ? esc(profile.email) : null,
     profile.location    ? esc(profile.location) : null,
     profile.linkedinUrl ? `<a href="${esc(ensureHttps(profile.linkedinUrl))}">${esc(profile.linkedinUrl.replace(/^https?:\/\//, ''))}</a>` : null,
     githubUsername      ? `<a href="https://github.com/${esc(githubUsername)}">github.com/${esc(githubUsername)}</a>` : null,
-    profile.website     ? `<a href="${esc(ensureHttps(profile.website))}">${esc(profile.website.replace(/^https?:\/\//, ''))}</a>` : null,
+    profile.website     ? `Portfolio: <a href="${esc(ensureHttps(profile.website))}">${esc(profile.website.replace(/^https?:\/\//, ''))}</a>` : null,
   ].filter(Boolean);
 
   // Skills — ORM & Data Access sits between Databases and AI/ML
@@ -560,10 +590,10 @@ function buildResumeHtml({
   }
 
   /* ── Header ── */
-  .header      { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #0f172a; }
-  .name        { font-size: 22pt; font-weight: 700; color: #0f172a; letter-spacing: -0.5px; }
-  .role        { font-size: 11pt; color: #1e3a8a; margin-top: 3px; font-weight: 600; }
-  .contact     { font-size: 9pt; color: #64748b; margin-top: 6px; }
+  .header      { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #0f172a; text-align: center; }
+  .name        { font-size: 24pt; font-weight: 700; color: #0f172a; letter-spacing: -0.5px; }
+  .role        { font-size: 10.5pt; color: #1e3a8a; margin-top: 4px; font-weight: 600; letter-spacing: 0.5px; }
+  .contact     { font-size: 8.5pt; color: #64748b; margin-top: 8px; }
   .contact a   { color: #1e3a8a; text-decoration: none; }
   .contact-sep { color: #cbd5e1; margin: 0 6px; }
 
