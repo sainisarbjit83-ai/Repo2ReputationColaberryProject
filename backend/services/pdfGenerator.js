@@ -119,17 +119,17 @@ const ROLE_MAP = {
   modular_frontend_architecture:    'Frontend Engineer',
 };
 
-// patternsInferred → natural-language specialization phrase for summary
+// patternsInferred → concise noun-phrase specialization for summary sentence 2
 const SPEC_MAP = {
-  ai_orchestrated_system:           'designing and integrating large language model orchestration systems',
-  retrieval_augmented_architecture: 'building retrieval-augmented generation (RAG) pipelines',
-  ai_integration_confirmed:         'integrating AI and LLM capabilities into production applications',
-  fullstack_architecture_confirmed: 'full-stack application architecture and system design',
-  production_ready_backend:         'production-grade backend development and API design',
-  enterprise_backend_patterns:      'enterprise backend architecture and domain-driven design',
-  infrastructure_as_code_present:   'infrastructure automation and cloud-native deployment',
-  strong_domain_separation:         'domain-driven system design and modular architecture',
-  scalable_service_architecture:    'designing scalable service architectures for high-load systems',
+  ai_orchestrated_system:           'LLM orchestration and AI system integration',
+  retrieval_augmented_architecture: 'RAG pipeline development',
+  ai_integration_confirmed:         'AI and LLM integration',
+  fullstack_architecture_confirmed: 'full-stack architecture and system design',
+  production_ready_backend:         'production-grade backend development',
+  enterprise_backend_patterns:      'enterprise backend architecture',
+  infrastructure_as_code_present:   'infrastructure automation and cloud deployment',
+  strong_domain_separation:         'domain-driven architecture',
+  scalable_service_architecture:    'scalable service design',
 };
 
 // Industry hints derived from known employer names
@@ -255,18 +255,18 @@ function buildPersonSummary(repos, experience, careerSignals) {
   }
   const s3 = priorityTechs.length ? `Proficient in ${priorityTechs.join(', ')}.` : null;
 
-  // S4 — Closing value statement
+  // S4 — Concise closing statement
   const isAI       = patterns.includes('ai_orchestrated_system') || patterns.includes('ai_integration_confirmed');
   const isFullstack = patterns.includes('fullstack_architecture_confirmed');
   const s4 = (engLevel === 'senior' && isAI)
-    ? 'Combines strategic technical leadership with hands-on engineering to deliver intelligent systems that are reliable, scalable, and built for long-term growth.'
+    ? 'Combines technical leadership with hands-on engineering to deliver intelligent, production-ready systems.'
     : (engLevel === 'senior' && isFullstack)
-    ? 'Brings a systems-thinking approach to engineering, balancing architectural quality with practical delivery across the full application stack.'
+    ? 'Brings a systems-thinking approach to full-stack delivery, balancing architecture quality with pragmatic execution.'
     : engLevel === 'senior'
-    ? 'Known for building production-grade systems that prioritize reliability, observability, and long-term maintainability.'
+    ? 'Known for production-grade systems that prioritize reliability, observability, and long-term maintainability.'
     : isAI
-    ? 'Passionate about applying AI and modern engineering practices to build systems that solve real-world problems effectively.'
-    : 'Committed to engineering practices that prioritize clarity, reliability, and long-term system quality.';
+    ? 'Passionate about applying AI and modern engineering practices to solve real-world problems at scale.'
+    : 'Committed to clarity, reliability, and long-term quality in every system built.';
 
   return [s1, s2, s3, s4].filter(Boolean).join(' ') || null;
 }
@@ -281,53 +281,53 @@ function buildArchBullets(archPatterns, techs, frameworks) {
     rest_api: () => {
       const hasAuth = all.includes('jwt') || all.includes('passport');
       return hasAuth
-        ? 'Designed RESTful API with JWT-based authentication for secure, stateless client communication'
-        : 'Designed and implemented RESTful API with structured resource routing and response handling';
+        ? 'Built RESTful API with JWT authentication for secure client access'
+        : 'Built RESTful API with structured resource routing and request handling';
     },
     stateless_auth: () =>
-      'Implemented stateless JWT authentication for secure API access and session management',
+      'Implemented JWT-based authentication for secure, stateless API access',
     orm: () => {
       const orm = all.find(t => ['sequelize','prisma','typeorm','mongoose','drizzle','knex'].includes(t));
       const label = orm ? (TECH_LABELS[orm] || orm.charAt(0).toUpperCase() + orm.slice(1)) : null;
       return label
-        ? `Built data access layer with ${label} for structured database interaction and query management`
-        : 'Built ORM-based data access layer for structured database interaction';
+        ? `Implemented ${label} ORM for structured database access and query management`
+        : 'Implemented ORM-based data access layer for structured database interaction';
     },
     containerization: () => all.includes('kubernetes')
-      ? 'Containerized all services with Docker and deployed to Kubernetes for horizontal scaling and high availability'
-      : 'Containerized application with Docker for consistent, portable deployment across environments',
+      ? 'Deployed containerized services to Kubernetes for production scalability'
+      : 'Containerized application with Docker for portable, reproducible deployment',
     container_orchestration: () =>
-      'Orchestrated containerized services with Kubernetes for automated scaling, rolling deployments, and fault tolerance',
+      'Orchestrated services with Kubernetes for automated scaling and rolling deployments',
     cicd_pipeline: () => {
       const ciLabel = all.includes('github-actions') ? 'GitHub Actions' : 'CI/CD tooling';
-      return `Automated build, test, and deployment pipeline using ${ciLabel} to support continuous delivery`;
+      return `Automated CI/CD pipeline using ${ciLabel} for continuous integration and deployment`;
     },
     infrastructure_as_code: () => {
       const iac = all.find(t => ['terraform','pulumi'].includes(t));
       const iacLabel = iac ? (TECH_LABELS[iac] || iac.charAt(0).toUpperCase() + iac.slice(1)) : 'Terraform';
-      return `Managed cloud infrastructure as code with ${iacLabel} for reproducible, version-controlled environments`;
+      return `Managed infrastructure as code using ${iacLabel} for reproducible cloud environments`;
     },
     llm_integration: () => {
       const llm = all.find(t => ['openai','anthropic','langchain','llamaindex','mistral'].includes(t));
-      const llmLabel = llm ? (TECH_LABELS[llm] || llm.charAt(0).toUpperCase() + llm.slice(1)) : 'OpenAI';
-      return `Integrated ${llmLabel} to power AI-driven features including natural language processing and intelligent automation`;
+      const llmLabel = llm ? (TECH_LABELS[llm] || llm.charAt(0).toUpperCase() + llm.slice(1)) : 'OpenAI API';
+      return `Integrated ${llmLabel} for AI-powered features and intelligent automation`;
     },
     llm_orchestration: () =>
-      'Built multi-step LLM orchestration pipeline coordinating prompts, context management, and structured output generation',
+      'Built multi-step LLM orchestration pipeline for structured AI workflow execution',
     rag_framework: () =>
-      'Implemented retrieval-augmented generation (RAG) pipeline combining vector search with LLM responses for context-aware output',
+      'Implemented RAG pipeline combining vector search with LLM responses for context-aware AI output',
     vector_database: () => {
       const vdb = all.find(t => ['pinecone','chromadb','weaviate'].includes(t));
       const vdbLabel = vdb ? (TECH_LABELS[vdb] || vdb.charAt(0).toUpperCase() + vdb.slice(1)) : 'vector database';
-      return `Integrated ${vdbLabel} for semantic search, embedding storage, and similarity-based retrieval`;
+      return `Integrated ${vdbLabel} for semantic search and embedding storage`;
     },
     relational_database: () => {
       const db = all.find(t => ['postgresql','mysql','sqlite'].includes(t));
       const dbLabel = db ? (TECH_LABELS[db] || db.charAt(0).toUpperCase() + db.slice(1)) : 'relational database';
-      return `Designed normalized ${dbLabel} schema with optimized query patterns for core business data`;
+      return `Designed ${dbLabel} schema with optimized queries for core business data`;
     },
     global_state_management: () =>
-      'Implemented global state management for complex client-side data flows and cross-component synchronization',
+      'Implemented global state management for complex client-side data flows',
   };
 
   for (const pat of archPatterns) {
@@ -354,6 +354,11 @@ function cleanProjectDescription(overview, hookSentence) {
     .replace(/\s+across\s+\d+\s+(interconnected\s+)?components?[^.]*\.?/gi, '.')
     .trim();
   if (!s) return null;
+  // Use only the first sentence
+  const firstPeriod = s.indexOf('.');
+  if (firstPeriod > 0 && firstPeriod < s.length - 1) s = s.slice(0, firstPeriod + 1);
+  // Truncate at 85 characters on a word boundary
+  if (s.length > 85) s = s.slice(0, 83).replace(/\s+\S*$/, '') + '.';
   s = s.charAt(0).toUpperCase() + s.slice(1);
   if (!s.endsWith('.')) s += '.';
   return s;
@@ -550,61 +555,61 @@ function buildResumeHtml({
     font-family: Arial, Helvetica, sans-serif;
     font-size: 10.5pt;
     line-height: 1.5;
-    color: #111;
+    color: #1e293b;
     background: #fff;
   }
 
   /* ── Header ── */
-  .header  { margin-bottom: 14px; border-bottom: 2px solid #0f172a; padding-bottom: 9px; }
-  .name    { font-size: 21pt; font-weight: 700; color: #0f172a; letter-spacing: -0.5px; }
-  .role    { font-size: 11pt; color: #1e3a8a; margin-top: 2px; font-weight: 600; }
-  .contact { font-size: 9pt; color: #475569; margin-top: 5px; }
-  .contact a { color: #1e3a8a; text-decoration: none; }
-  .contact-sep { color: #94a3b8; margin: 0 5px; }
+  .header      { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #0f172a; }
+  .name        { font-size: 22pt; font-weight: 700; color: #0f172a; letter-spacing: -0.5px; }
+  .role        { font-size: 11pt; color: #1e3a8a; margin-top: 3px; font-weight: 600; }
+  .contact     { font-size: 9pt; color: #64748b; margin-top: 6px; }
+  .contact a   { color: #1e3a8a; text-decoration: none; }
+  .contact-sep { color: #cbd5e1; margin: 0 6px; }
 
   /* ── Sections ── */
-  .section { margin-bottom: 13px; }
+  .section { margin-bottom: 15px; }
   .section-title {
-    font-size: 9.5pt; font-weight: 700; color: #0f172a;
-    text-transform: uppercase; letter-spacing: 1.6px;
-    border-bottom: 1px solid #cbd5e1;
-    padding-bottom: 3px; margin-bottom: 8px;
+    font-size: 9pt; font-weight: 700; color: #1e3a8a;
+    text-transform: uppercase; letter-spacing: 2px;
+    border-left: 3px solid #1e3a8a;
+    padding-left: 8px; margin-bottom: 9px;
   }
 
   /* ── Summary ── */
-  .summary { font-size: 10pt; color: #1e293b; line-height: 1.7; }
+  .summary { font-size: 10pt; color: #334155; line-height: 1.65; }
 
-  /* ── Skills ── */
-  .skill-row  { margin-bottom: 4px; font-size: 9.5pt; }
-  .skill-cat  { font-weight: 700; color: #0f172a; margin-right: 5px; }
+  /* ── Skills — fixed-width label column ── */
+  .skill-row  { display: flex; margin-bottom: 5px; font-size: 9.5pt; }
+  .skill-cat  { font-weight: 700; color: #0f172a; min-width: 155px; flex-shrink: 0; }
   .skill-list { color: #334155; }
 
   /* ── Experience ── */
-  .exp-entry   { margin-bottom: 11px; }
+  .exp-entry   { margin-bottom: 12px; }
   .exp-header  { display: flex; justify-content: space-between; align-items: baseline; }
   .exp-role    { font-size: 10.5pt; font-weight: 700; color: #0f172a; }
-  .exp-date    { font-size: 8.5pt; color: #64748b; white-space: nowrap; margin-left: 8px; }
-  .exp-company { font-size: 9.5pt; color: #475569; margin-top: 1px; font-style: italic; }
-  .exp-bullets { margin: 3px 0 0 16px; font-size: 9.5pt; color: #334155; line-height: 1.5; }
-  .exp-bullets li { margin-bottom: 2px; }
+  .exp-date    { font-size: 8.5pt; color: #64748b; white-space: nowrap; margin-left: 10px; }
+  .exp-company { font-size: 9.5pt; color: #475569; margin-top: 2px; font-style: italic; }
+  .exp-bullets { margin: 4px 0 0 16px; font-size: 9.5pt; color: #334155; line-height: 1.5; }
+  .exp-bullets li { margin-bottom: 3px; }
 
   /* ── Education ── */
   .edu-entry       { margin-bottom: 7px; }
   .edu-degree      { font-size: 10pt; font-weight: 600; color: #0f172a; }
-  .edu-institution { font-size: 9.5pt; color: #475569; margin-top: 1px; }
+  .edu-institution { font-size: 9.5pt; color: #475569; margin-top: 2px; }
 
   /* ── Projects ── */
-  .project         { margin-bottom: 13px; }
-  .project-name    { font-size: 10.5pt; font-weight: 700; color: #0f172a; }
-  .project-desc    { font-size: 9.5pt; color: #475569; margin-top: 2px; font-style: italic; line-height: 1.45; }
+  .project         { margin-bottom: 14px; }
+  .project-name    { font-size: 11pt; font-weight: 700; color: #0f172a; }
+  .project-desc    { font-size: 9.5pt; color: #64748b; margin-top: 2px; font-style: italic; }
   .project-bullets { margin: 5px 0 0 16px; font-size: 9.5pt; color: #334155; line-height: 1.55; }
-  .project-bullets li { margin-bottom: 2px; }
-  .project-techs   { font-size: 8.5pt; color: #475569; margin-top: 5px; }
-  .project-techs strong { color: #0f172a; }
+  .project-bullets li { margin-bottom: 3px; }
+  .project-techs   { font-size: 8.5pt; color: #64748b; margin-top: 5px; }
+  .project-techs strong { color: #0f172a; font-weight: 600; }
 
   /* ── Footer ── */
   .footer {
-    margin-top: 14px; border-top: 1px solid #e2e8f0;
+    margin-top: 16px; border-top: 1px solid #e2e8f0;
     padding-top: 6px; font-size: 8pt; color: #94a3b8; text-align: center;
   }
 </style>

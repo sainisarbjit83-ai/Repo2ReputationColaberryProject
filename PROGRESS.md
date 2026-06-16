@@ -21,7 +21,7 @@
 
 ## Repository Phase
 
-**Current Phase: M13 — Active Development (PDF Resume Redesign to Traditional Format — Uncommitted)**
+**Current Phase: M14 — Active Development (PDF Resume Layout & Language Polish)**
 
 | Layer | Status |
 |-------|--------|
@@ -157,18 +157,50 @@ New Analysis Panel tabs: Overview (Executive Intelligence Dashboard), Architectu
 
 ---
 
-## Uncommitted Changes (Current Session — 2026-06-15)
+### M12 — Resume PDF Final Polish *(committed: d6fa426)*
 
-Changes in this session that have **not been committed yet**:
+**Files modified:**
+- `backend/services/pdfGenerator.js`:
+  - Removed `buildTargetRoleHtml()` and Target Role section entirely
+  - Moved Engineering Level into Career Highlights as first bullet ("Senior Engineering Level")
+  - Extracted `getEngLevel()` and `getYearsExperience()` as shared helpers
+  - Expanded `buildPersonSummary()` to 4 sentences; takes `experience` for years in S1
+  - ORM tools (`prisma`, `drizzle`, `mongoose`, `sequelize`, `typeorm`, `knex`) moved from `'Databases'` → `'ORM & Data Access'` in `TECH_CATEGORIES`
+  - Added `'ORM & Data Access'` to `skillCategoryOrder`
+  - Added `jwt: 'JWT'` and `'rest-routes': 'REST API Design'` to TECH_LABELS (fixed Jwt / Rest-routes display bugs)
+  - Updated `CI_ARCH_LABELS` with recruiter-friendly labels; added `container_orchestration`, `rest_routing`
 
-### `backend/services/pdfGenerator.js` *(M12 — final polish)*
-- Removed `buildTargetRoleHtml()` and Target Role section entirely (redundant; recruiters infer from evidence)
-- Moved Engineering Level into Career Highlights as first bullet ("Senior Engineering Level")
-- Extracted `getEngLevel(repos)` and `getYearsExperience(experience)` as shared helpers (used by both summary and highlights)
-- Expanded `buildPersonSummary()` to 4 sentences: identity+years+scope / core techs / proven expertise signals / closing passion sentence; now takes `experience` parameter to include years in S1
-- ORM tools (`prisma`, `drizzle`, `mongoose`, `sequelize`, `typeorm`, `knex`) moved from `'Databases'` → `'ORM'` category in `TECH_CATEGORIES`
-- `'ORM'` added to `skillCategoryOrder` between `'Databases'` and `'AI/ML'`
-- Updated `CI_ARCH_LABELS` with recruiter-friendly labels: `orm` → "Database Persistence Layer", `containerization` → "Containerized Deployment", `rest_api` → "REST API Architecture", `cicd_pipeline` → "Automated CI/CD Pipeline", `infrastructure_as_code` → "Infrastructure Automation", `component_ui` → "Component-Driven Frontend", `ssr_framework` → "Server-Side Rendering (SSR)", `utility_css_framework` → "Utility-First CSS", `payment_processing` → "Payment Integration", `query_builder` → "Programmatic Query Layer"
+### M13 — PDF Resume Redesign to Traditional Format *(committed: 02d1e67)*
+
+**Files modified:**
+- `backend/services/pdfGenerator.js` — complete restructuring:
+  - Removed Engineering Signals and Career Highlights sections entirely
+  - Section order: Summary → Experience → Education → Technical Skills → Projects
+  - Rewrote `buildPersonSummary()` with `SPEC_MAP`, `INDUSTRY_HINTS`, and `extractIndustries()` for industry-breadth context
+  - Switched project bullets to `technicalDifferentiation` + `operationalCapabilities` + synthesized `buildArchBullets()`
+  - Added `cleanProjectDescription()` to strip repo-centric language from project taglines
+  - Added implied language/skill inference (SQL if PostgreSQL, JavaScript if TypeScript, LLM/RAG pattern skills)
+  - Added `isGenericBullet()` filter to block assessment-style output
+
+---
+
+### M14 — Resume PDF Language & Layout Polish *(2026-06-15)*
+
+**Files modified:**
+- `backend/services/pdfGenerator.js`:
+  - `SPEC_MAP` values shortened to concise noun phrases (e.g., "LLM orchestration and AI system integration" instead of gerund phrases)
+  - `buildPersonSummary()` S4 closing sentence shortened and tightened for all three paths (AI+senior, fullstack+senior, other)
+  - `buildArchBullets()` all bullet strings rewritten as short action-first phrases; removed trailing "for [long explanation]" suffixes
+  - `cleanProjectDescription()` — now extracts first sentence only, then truncates at 85 characters on a word boundary; prevents multi-sentence documentation-style descriptions from appearing in project headers
+  - **CSS overhaul** — skills now use flex layout with `min-width: 155px` label column for aligned columns; section titles changed from `border-bottom` to `border-left: 3px solid #1e3a8a` accent for stronger visual hierarchy; section/project spacing increased; summary line-height tightened to 1.65; body color softened to `#1e293b`
+
+**Validation:**
+- Manual browser verification required after PDF re-generation
+- No automated tests added
+
+**Known gaps:**
+- PDF output not tested against a live deep-analysis repo in this session
+- `cleanProjectDescription()` 85-char truncation may clip descriptions that are naturally short (acceptable behavior — truncation only triggers when length exceeds threshold)
 
 ---
 
@@ -301,4 +333,4 @@ For each feature to be considered complete:
 
 ---
 
-*Last updated: 2026-06-15 — M13: complete PDF resume redesign. Removed all AI-assessment sections (Engineering Signals, Career Highlights, Target Role). Restructured as traditional professional resume: Summary → Experience → Education → Skills → Projects. Rewrote summary with industry-breadth and AI-first tech ordering. Replaced generic project bullets with technicalDifferentiation + operationalCapabilities + synthesized arch accomplishments. Added implied languages (SQL, JavaScript) and pattern-derived AI/ML skills.*
+*Last updated: 2026-06-15 — M14: PDF resume language and layout polish. Shortened SPEC_MAP phrases, tightened S4 summary, shortened arch bullets to action-first, added first-sentence + 85-char truncation to cleanProjectDescription(). CSS overhaul: flex skills layout, left-border section titles, improved spacing and typography hierarchy.*
