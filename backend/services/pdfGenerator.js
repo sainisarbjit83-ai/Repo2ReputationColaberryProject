@@ -14,7 +14,7 @@ async function generatePortfolioPdf(data) {
     const pdfBuffer = await page.pdf({
       format: 'A4',
       printBackground: false,
-      margin: { top: '15mm', right: '15mm', bottom: '15mm', left: '15mm' },
+      margin: { top: '12mm', right: '14mm', bottom: '12mm', left: '14mm' },
     });
     return pdfBuffer;
   } finally {
@@ -600,10 +600,14 @@ function buildResumeHtml({
   }
 
   /* ── Page container ── */
-  .resume { max-width: 760px; margin: 0 auto; padding: 36px 40px; }
+  .resume { width: 100%; padding: 0; }
 
   /* ── Header ── */
-  .header      { margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1.5px solid #000; text-align: center; }
+  .header {
+    display: flex; flex-direction: column; align-items: center;
+    text-align: center;
+    margin-bottom: 18px; padding-bottom: 14px; border-bottom: 2px solid #000;
+  }
   .name        { font-size: 32pt; font-weight: 700; color: #000; letter-spacing: 0.5px; }
   .role        { font-size: 13pt; color: #222; margin-top: 6px; font-weight: 400; letter-spacing: 0.3px; }
   .contact     { font-size: 9.5pt; color: #444; margin-top: 8px; }
