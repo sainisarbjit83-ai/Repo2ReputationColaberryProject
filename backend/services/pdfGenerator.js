@@ -120,6 +120,10 @@ const DOMAIN_TO_TITLE = {
   'System Architecture':      'Software Architect',
   'Cloud Engineering':        'Cloud Engineer',
   'Security Engineering':     'Security Engineer',
+  'Power BI Development':     'Power BI Developer',
+  'Business Intelligence':    'Business Intelligence Developer',
+  'Data Analytics':           'Data Analyst',
+  'Data Analysis':            'Data Analyst',
 };
 
 // patternsInferred → secondary headline specialization (shown after pipe)
