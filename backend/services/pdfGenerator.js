@@ -608,9 +608,9 @@ function buildResumeHtml({
     text-align: center;
     margin-bottom: 18px; padding-bottom: 14px; border-bottom: 2px solid #000;
   }
-  .name        { font-size: 32pt; font-weight: 700; color: #000; letter-spacing: 0.5px; }
+  .name        { font-size: 24pt; font-weight: 700; color: #000; letter-spacing: 0.5px; }
   .role        { font-size: 13pt; color: #222; margin-top: 6px; font-weight: 400; letter-spacing: 0.3px; }
-  .contact     { font-size: 9.5pt; color: #444; margin-top: 8px; }
+  .contact     { font-size: 9pt; color: #444; margin-top: 8px; }
   .contact a   { color: #1a1a1a; text-decoration: none; }
   .contact-sep { color: #999; margin: 0 8px; }
 
