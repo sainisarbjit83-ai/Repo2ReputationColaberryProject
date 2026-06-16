@@ -1159,10 +1159,13 @@ function PortfolioBuilder({ onLogout }) {
                     Uses deep analysis to write 2–4 paragraph descriptions. Visitors see them when they click a project.
                   </p>
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                   {editedProjects.map((p, i) => (
                     <div key={i}>
                       <p style={{ margin: '0 0 7px', fontSize: '12px', fontWeight: '700', color: '#374151' }}>{p.repoName}</p>
+                      <label style={{ display: 'block', fontSize: '10px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Card summary
+                      </label>
                       <textarea
                         value={p.oneLiner || ''}
                         onChange={e => {
@@ -1176,13 +1179,28 @@ function PortfolioBuilder({ onLogout }) {
                           border: '1px solid #e5e7eb', borderRadius: '10px',
                           fontSize: '12px', color: '#374151', outline: 'none',
                           boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.6',
-                          minHeight: '80px',
+                          minHeight: '60px',
                           boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
                         }}
                       />
                       <div style={{ textAlign: 'right', fontSize: '10px', color: '#c7c7c7', marginTop: '3px' }}>
                         {(p.oneLiner || '').length} / 300
                       </div>
+                      {p.description && (
+                        <div style={{ marginTop: '10px' }}>
+                          <label style={{ display: 'block', fontSize: '10px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            AI description (shown when visitor clicks project)
+                          </label>
+                          <div style={{
+                            padding: '10px 14px', borderRadius: '8px',
+                            backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0',
+                            fontSize: '11px', color: '#374151', lineHeight: '1.7',
+                            whiteSpace: 'pre-wrap',
+                          }}>
+                            {p.description}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

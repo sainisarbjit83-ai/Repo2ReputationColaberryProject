@@ -733,7 +733,7 @@ router.post('/:id/generate-project-descriptions', authMiddleware, async (req, re
     const existingProjects = portfolio.content_json?.narrative?.projects || [];
 
     const reposResult = await pool.query(
-      `SELECT r.id AS repo_id, r.name,
+      `SELECT r.id AS repo_id, r.name, r.description AS repo_description,
               a.summary_json,
               da.intelligence_json,
               da.code_intelligence_json,
@@ -762,7 +762,7 @@ router.post('/:id/generate-project-descriptions', authMiddleware, async (req, re
 
       const projectData = {
         repoName:                 r.name,
-        hookSentence:             intel?.portfolioNarrative?.hookSentence || '',
+        hookSentence:             intel?.portfolioNarrative?.hookSentence || r.repo_description || '',
         whatItDoes:               r.summary_json?.what_it_does || '',
         probableDomain:           intel?.businessValue?.probableDomain || '',
         operationalCapabilities:  intel?.businessValue?.operationalCapabilities || [],
@@ -772,14 +772,12 @@ router.post('/:id/generate-project-descriptions', authMiddleware, async (req, re
         patternsInferred:         inference?.patternsInferred || [],
       };
 
-      let description = '';
-      const hasSignals = projectData.hookSentence || projectData.whatItDoes || projectData.technologies.length > 0;
-      if (hasSignals) {
-        try {
-          description = await generateProjectDescription(projectData);
-        } catch (err) {
-          console.error(`[generate-project-descriptions] ${r.name}:`, err.message);
-        }
+      // Always generate — repo name alone is enough for a basic description
+      let description = existing.description || '';
+      try {
+        description = await generateProjectDescription(projectData);
+      } catch (err) {
+        console.error(`[generate-project-descriptions] ${r.name}:`, err.message);
       }
 
       return { ...existing, description };
