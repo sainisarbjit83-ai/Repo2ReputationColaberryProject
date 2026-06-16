@@ -586,65 +586,68 @@ function buildResumeHtml({
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    font-family: Arial, Helvetica, sans-serif;
+    font-family: Georgia, 'Times New Roman', Cambria, serif;
     font-size: 10.5pt;
     line-height: 1.5;
-    color: #1e293b;
+    color: #1a1a1a;
     background: #fff;
   }
 
+  /* ── Page container ── */
+  .resume { max-width: 760px; margin: 0 auto; padding: 36px 40px; }
+
   /* ── Header ── */
-  .header      { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #0f172a; text-align: center; }
-  .name        { font-size: 24pt; font-weight: 700; color: #0f172a; letter-spacing: -0.5px; }
-  .role        { font-size: 10.5pt; color: #1e3a8a; margin-top: 4px; font-weight: 600; letter-spacing: 0.5px; }
-  .contact     { font-size: 8.5pt; color: #64748b; margin-top: 8px; }
-  .contact a   { color: #1e3a8a; text-decoration: none; }
-  .contact-sep { color: #cbd5e1; margin: 0 6px; }
+  .header      { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1.5px solid #000; text-align: center; }
+  .name        { font-size: 26pt; font-weight: 700; color: #000; letter-spacing: 0; }
+  .role        { font-size: 11pt; color: #222; margin-top: 5px; font-weight: 600; letter-spacing: 0.3px; }
+  .contact     { font-size: 9pt; color: #444; margin-top: 7px; }
+  .contact a   { color: #1a1a1a; text-decoration: none; }
+  .contact-sep { color: #888; margin: 0 7px; }
 
   /* ── Sections ── */
-  .section { margin-bottom: 15px; }
+  .section { margin-bottom: 14px; }
   .section-title {
-    font-size: 9pt; font-weight: 700; color: #1e3a8a;
-    text-transform: uppercase; letter-spacing: 2px;
-    border-left: 3px solid #1e3a8a;
-    padding-left: 8px; margin-bottom: 9px;
+    font-size: 9.5pt; font-weight: 700; color: #000;
+    text-transform: uppercase; letter-spacing: 1.5px;
+    border-bottom: 1px solid #1a1a1a;
+    padding-bottom: 3px; margin-bottom: 9px;
   }
 
   /* ── Summary ── */
-  .summary { font-size: 10pt; color: #334155; line-height: 1.65; }
+  .summary { font-size: 10pt; color: #222; line-height: 1.6; }
 
   /* ── Skills — fixed-width label column ── */
   .skill-row  { display: flex; margin-bottom: 5px; font-size: 9.5pt; }
-  .skill-cat  { font-weight: 700; color: #0f172a; min-width: 155px; flex-shrink: 0; }
-  .skill-list { color: #334155; }
+  .skill-cat  { font-weight: 700; color: #000; min-width: 155px; flex-shrink: 0; }
+  .skill-list { color: #222; }
 
   /* ── Experience ── */
   .exp-entry   { margin-bottom: 12px; }
   .exp-header  { display: flex; justify-content: space-between; align-items: baseline; }
-  .exp-role    { font-size: 10.5pt; font-weight: 700; color: #0f172a; }
-  .exp-date    { font-size: 8.5pt; color: #64748b; white-space: nowrap; margin-left: 10px; }
-  .exp-company { font-size: 9.5pt; color: #475569; margin-top: 2px; font-style: italic; }
-  .exp-bullets { margin: 4px 0 0 16px; font-size: 9.5pt; color: #334155; line-height: 1.5; }
+  .exp-role    { font-size: 10.5pt; font-weight: 700; color: #000; }
+  .exp-date    { font-size: 9pt; color: #444; white-space: nowrap; margin-left: 10px; }
+  .exp-company { font-size: 9.5pt; color: #333; margin-top: 2px; font-style: italic; }
+  .exp-bullets { margin: 4px 0 0 16px; font-size: 9.5pt; color: #222; line-height: 1.5; }
   .exp-bullets li { margin-bottom: 3px; }
 
   /* ── Education ── */
   .edu-entry       { margin-bottom: 7px; }
-  .edu-degree      { font-size: 10pt; font-weight: 600; color: #0f172a; }
-  .edu-institution { font-size: 9.5pt; color: #475569; margin-top: 2px; }
+  .edu-degree      { font-size: 10pt; font-weight: 600; color: #000; }
+  .edu-institution { font-size: 9.5pt; color: #333; margin-top: 2px; }
 
   /* ── Projects ── */
   .project         { margin-bottom: 14px; }
-  .project-name    { font-size: 11pt; font-weight: 700; color: #0f172a; }
-  .project-desc    { font-size: 9.5pt; color: #64748b; margin-top: 2px; font-style: italic; }
-  .project-bullets { margin: 5px 0 0 16px; font-size: 9.5pt; color: #334155; line-height: 1.55; }
+  .project-name    { font-size: 10.5pt; font-weight: 700; color: #000; }
+  .project-desc    { font-size: 9.5pt; color: #444; margin-top: 2px; font-style: italic; }
+  .project-bullets { margin: 5px 0 0 16px; font-size: 9.5pt; color: #222; line-height: 1.55; }
   .project-bullets li { margin-bottom: 3px; }
-  .project-techs   { font-size: 8.5pt; color: #64748b; margin-top: 5px; }
-  .project-techs strong { color: #0f172a; font-weight: 600; }
+  .project-techs   { font-size: 8.5pt; color: #444; margin-top: 5px; }
+  .project-techs strong { color: #000; font-weight: 700; }
 
   /* ── Footer ── */
   .footer {
-    margin-top: 16px; border-top: 1px solid #e2e8f0;
-    padding-top: 6px; font-size: 8pt; color: #94a3b8; text-align: center;
+    margin-top: 16px; border-top: 1px solid #ccc;
+    padding-top: 6px; font-size: 8pt; color: #666; text-align: center;
   }
 </style>
 </head>
@@ -654,7 +657,7 @@ function buildResumeHtml({
   <div class="header">
     <div class="name">${esc(displayName)}</div>
     ${displayRoleLine ? `<div class="role">${esc(displayRoleLine)}</div>` : ''}
-    ${contactParts.length ? `<div class="contact">${contactParts.join('<span class="contact-sep">&middot;</span>')}</div>` : ''}
+    ${contactParts.length ? `<div class="contact">${contactParts.join('<span class="contact-sep">|</span>')}</div>` : ''}
   </div>
 
   ${summary ? `
@@ -669,18 +672,18 @@ function buildResumeHtml({
     ${experienceHtml}
   </div>` : ''}
 
-  ${educationHtml ? `
-  <div class="section">
-    <div class="section-title">Education</div>
-    ${educationHtml}
-  </div>` : ''}
-
   ${skillsHtml}
 
   ${projectsHtml ? `
   <div class="section">
     <div class="section-title">Projects</div>
     ${projectsHtml}
+  </div>` : ''}
+
+  ${educationHtml ? `
+  <div class="section">
+    <div class="section-title">Education</div>
+    ${educationHtml}
   </div>` : ''}
 
   <div class="footer">

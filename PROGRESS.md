@@ -21,7 +21,7 @@
 
 ## Repository Phase
 
-**Current Phase: M15 — Active Development (PDF Header Redesign — Centered, Professional Headline)**
+**Current Phase: M16 — Active Development (PDF Traditional Resume Typography & Layout)**
 
 | Layer | Status |
 |-------|--------|
@@ -350,4 +350,21 @@ For each feature to be considered complete:
 
 ---
 
-*Last updated: 2026-06-15 — M15: PDF header centered, professional headline replaces raw career signal domain, Portfolio URL labeled.*
+### M16 — PDF Traditional Resume Typography & Layout *(2026-06-15)*
+
+**Files modified:**
+- `backend/services/pdfGenerator.js`:
+  - `font-family` switched from `Arial, Helvetica, sans-serif` to `Georgia, 'Times New Roman', Cambria, serif` — eliminates web-export appearance
+  - All Tailwind slate hex colors replaced with neutral print palette: body `#1a1a1a`, headings `#000`, body text `#222`, secondary `#333`/`#444`, muted `#666`
+  - `.section-title`: removed `border-left` accent + `color: #1e3a8a` (blue); replaced with `border-bottom: 1px solid #1a1a1a` + `color: #000` — traditional executive resume heading style
+  - `.name` font-size 24pt → 26pt; `.role` color `#1e3a8a` → `#222`; `.contact` font-size 8.5pt → 9pt; `.contact a` color `#1e3a8a` → `#1a1a1a` (no blue hyperlink colour in print)
+  - Contact separator changed from `&middot;` (·) to `|` (pipe) — matches traditional resume format
+  - Section order resequenced: Summary → Experience → Technical Skills → Projects → Education (Education moved from 3rd to last)
+  - Added `.resume` container with `max-width: 760px; margin: 0 auto; padding: 36px 40px` for proper page margins
+
+**Validation:**
+- Manual PDF re-generation required
+
+---
+
+*Last updated: 2026-06-15 — M16: Full typography switch to Georgia serif, print-native color palette, traditional section heading style, pipe contact separators, Education moved to last.*
