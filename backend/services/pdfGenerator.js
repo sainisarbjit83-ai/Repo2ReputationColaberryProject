@@ -110,16 +110,29 @@ const CI_ARCH_LABELS = {
 
 // career_signals domain → professional job title noun
 const DOMAIN_TO_TITLE = {
+  // AI / ML variants (OpenAI may return any of these)
   'AI Engineering':           'AI Backend Engineer',
+  'Artificial Intelligence':  'AI Backend Engineer',
+  'AI/ML Engineering':        'AI Backend Engineer',
+  'AI Development':           'AI Backend Engineer',
+  'AI/ML':                    'AI Backend Engineer',
+  'Machine Learning':         'Machine Learning Engineer',
+  // Full-stack / web
   'Full Stack Development':   'Full-Stack Developer',
+  'Web Development':          'Software Engineer',
+  // Backend / frontend
   'Backend Development':      'Backend Engineer',
   'Frontend Development':     'Frontend Engineer',
+  // Other engineering domains
+  'Software Development':     'Software Engineer',
+  'Software Engineering':     'Software Engineer',
   'Mobile Development':       'Mobile Developer',
   'Data Engineering':         'Data Engineer',
   'DevOps Engineering':       'DevOps Engineer',
   'System Architecture':      'Software Architect',
   'Cloud Engineering':        'Cloud Engineer',
   'Security Engineering':     'Security Engineer',
+  // Data / BI
   'Power BI Development':     'Power BI Developer',
   'Business Intelligence':    'Business Intelligence Developer',
   'Data Analytics':           'Data Analyst',
@@ -135,6 +148,17 @@ const PATTERN_SECONDARY = {
   enterprise_backend_patterns:        'Enterprise Backend',
   modular_frontend_architecture:      'Frontend Development',
   infrastructure_as_code_present:     'Cloud Infrastructure',
+};
+
+// patternsInferred → role noun used in summary S1 sentence
+const ROLE_MAP = {
+  ai_orchestrated_system:           'AI Engineer',
+  retrieval_augmented_architecture: 'AI Engineer',
+  ai_integration_confirmed:         'Full-Stack AI Engineer',
+  fullstack_architecture_confirmed: 'Full-Stack Engineer',
+  production_ready_backend:         'Backend Engineer',
+  enterprise_backend_patterns:      'Backend Engineer',
+  modular_frontend_architecture:    'Frontend Engineer',
 };
 
 // patternsInferred → concise noun-phrase specialization for summary sentence 2
@@ -210,7 +234,7 @@ function buildProfessionalHeadline(repos, careerSignals, experience, fallbackHea
   const topDomain  = sorted[0]?.domain || null;
   const primaryTitle = topDomain ? (DOMAIN_TO_TITLE[topDomain] || topDomain) : null;
 
-  if (!primaryTitle) return fallbackHeadline || null;
+  if (!primaryTitle) return fallbackHeadline || 'Software Engineer';
 
   // Secondary specialization: prefer second career signal, else first matching pattern
   const secondDomain = sorted[1]?.domain || null;
@@ -268,42 +292,24 @@ function buildPersonSummary(repos, experience, careerSignals) {
     : 'across enterprise software and cloud-native systems';
   const s1 = `${titlePart} with ${yearsPart} delivering production-grade software systems ${industryPhrase}.`;
 
-  // S2 — Specializations derived from patternsInferred
-  const specs = patterns.filter(p => SPEC_MAP[p]).slice(0, 3).map(p => SPEC_MAP[p]);
-  const s2 = specs.length ? `Specializes in ${specs.join(', ')}.` : null;
+  // S2 — Top 2 specializations (cap at 2 to stay concise; tech list lives in Skills section)
+  const specs = patterns.filter(p => SPEC_MAP[p]).slice(0, 2).map(p => SPEC_MAP[p]);
+  const s2 = specs.length ? `Specializes in ${specs.join(' and ')}.` : null;
 
-  // S3 — Technologies in AI-first category priority
-  const CAT_PRIORITY = ['AI/ML', 'Backend', 'Databases', 'ORM & Data Access', 'Frontend', 'DevOps'];
-  const seenTech = new Set();
-  const priorityTechs = [];
-  outer: for (const cat of CAT_PRIORITY) {
-    for (const repo of repos) {
-      const ci = repo.codeIntelligence;
-      if (!ci) continue;
-      for (const t of [...(ci.technologies || []), ...(ci.frameworks || [])]) {
-        if (TECH_CATEGORIES[t] !== cat || seenTech.has(t)) continue;
-        seenTech.add(t);
-        priorityTechs.push(TECH_LABELS[t] || t.charAt(0).toUpperCase() + t.slice(1));
-        if (priorityTechs.length >= 7) break outer;
-      }
-    }
-  }
-  const s3 = priorityTechs.length ? `Proficient in ${priorityTechs.join(', ')}.` : null;
-
-  // S4 — Concise closing statement
+  // S3 — Business-impact closing
   const isAI       = patterns.includes('ai_orchestrated_system') || patterns.includes('ai_integration_confirmed');
   const isFullstack = patterns.includes('fullstack_architecture_confirmed');
-  const s4 = (engLevel === 'senior' && isAI)
-    ? 'Combines technical leadership with hands-on engineering to deliver intelligent, production-ready systems.'
+  const s3 = (engLevel === 'senior' && isAI)
+    ? 'Delivers intelligent, production-ready systems that combine technical leadership with hands-on engineering.'
     : (engLevel === 'senior' && isFullstack)
-    ? 'Brings a systems-thinking approach to full-stack delivery, balancing architecture quality with pragmatic execution.'
+    ? 'Brings a systems-thinking approach to full-stack delivery, balancing architecture quality with execution speed.'
     : engLevel === 'senior'
-    ? 'Known for production-grade systems that prioritize reliability, observability, and long-term maintainability.'
+    ? 'Builds production-grade systems with a focus on reliability, observability, and long-term maintainability.'
     : isAI
-    ? 'Passionate about applying AI and modern engineering practices to solve real-world problems at scale.'
-    : 'Committed to clarity, reliability, and long-term quality in every system built.';
+    ? 'Applies AI and modern engineering practices to build scalable, real-world software solutions.'
+    : 'Focused on clarity, reliability, and long-term quality across the full software lifecycle.';
 
-  return [s1, s2, s3, s4].filter(Boolean).join(' ') || null;
+  return [s1, s2, s3].filter(Boolean).join(' ') || null;
 }
 
 // ─── Synthesized accomplishment bullets from architecture patterns ─────────────
@@ -597,20 +603,20 @@ function buildResumeHtml({
   .resume { max-width: 760px; margin: 0 auto; padding: 36px 40px; }
 
   /* ── Header ── */
-  .header      { margin-bottom: 14px; padding-bottom: 12px; border-bottom: 1.5px solid #000; text-align: center; }
-  .name        { font-size: 26pt; font-weight: 700; color: #000; letter-spacing: 0; }
-  .role        { font-size: 11pt; color: #222; margin-top: 5px; font-weight: 600; letter-spacing: 0.3px; }
-  .contact     { font-size: 9pt; color: #444; margin-top: 7px; }
+  .header      { margin-bottom: 18px; padding-bottom: 14px; border-bottom: 1.5px solid #000; text-align: center; }
+  .name        { font-size: 32pt; font-weight: 700; color: #000; letter-spacing: 0.5px; }
+  .role        { font-size: 13pt; color: #222; margin-top: 6px; font-weight: 400; letter-spacing: 0.3px; }
+  .contact     { font-size: 9.5pt; color: #444; margin-top: 8px; }
   .contact a   { color: #1a1a1a; text-decoration: none; }
-  .contact-sep { color: #888; margin: 0 7px; }
+  .contact-sep { color: #999; margin: 0 8px; }
 
   /* ── Sections ── */
-  .section { margin-bottom: 14px; }
+  .section { margin-bottom: 18px; }
   .section-title {
-    font-size: 9.5pt; font-weight: 700; color: #000;
+    font-size: 13pt; font-weight: 700; color: #000;
     text-transform: uppercase; letter-spacing: 1.5px;
-    border-bottom: 1px solid #1a1a1a;
-    padding-bottom: 3px; margin-bottom: 9px;
+    border-bottom: 1.5px solid #000;
+    padding-bottom: 4px; margin-bottom: 10px;
   }
 
   /* ── Summary ── */

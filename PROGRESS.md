@@ -21,7 +21,7 @@
 
 ## Repository Phase
 
-**Current Phase: M16 — Active Development (PDF Traditional Resume Typography & Layout)**
+**Current Phase: M17 — Active Development (PDF Executive Typography — 32pt name, 13pt section titles)**
 
 | Layer | Status |
 |-------|--------|
@@ -367,4 +367,22 @@ For each feature to be considered complete:
 
 ---
 
-*Last updated: 2026-06-15 — M16: Full typography switch to Georgia serif, print-native color palette, traditional section heading style, pipe contact separators, Education moved to last.*
+### M17 — PDF Executive Typography *(2026-06-15)*
+
+**Files modified:**
+- `backend/services/pdfGenerator.js`:
+  - **DOMAIN_TO_TITLE extended** — added AI variants (`"Artificial Intelligence"`, `"AI/ML Engineering"`, `"AI Development"`, `"AI/ML"`, `"Machine Learning"`), web/software variants (`"Web Development"`, `"Software Development"`, `"Software Engineering"`); total 26 domain mappings
+  - **Safe fallback** — `buildProfessionalHeadline()` now returns `"Software Engineer"` instead of null when no career signals are present
+  - **ROLE_MAP restored** — was accidentally removed in M15; summary S1 sentence uses it to derive role from `patternsInferred` (separate from `DOMAIN_TO_TITLE` which serves the headline)
+  - **CSS — name**: 26pt → 32pt, `letter-spacing: 0.5px`
+  - **CSS — headline**: 11pt bold → 13pt regular weight (bold competed with name)
+  - **CSS — section titles**: 9.5pt → 13pt, border-bottom 1.5px, padding-bottom 4px, section margin-bottom 14px → 18px
+  - **CSS — contact row**: 9pt → 9.5pt, sep margin widened to 8px
+  - **Summary trimmed to 3 sentences**: removed S3 (technology list — redundant with Skills section); S2 capped at 2 specialisations joined with "and" instead of comma list; closing sentence tightened for business impact
+
+**Validation:**
+- Manual PDF re-generation required to verify 32pt name and 13pt section title proportions
+
+---
+
+*Last updated: 2026-06-15 — M17: Executive typography overhaul. 32pt name, 13pt section titles, 13pt regular headline, 3-sentence summary, extended domain map with AI variants and Software Engineer fallback, ROLE_MAP bug fix.*
