@@ -3525,19 +3525,6 @@ function AnalysisPanel({ importedRepos, onLogout }) {
               </div>
             </div>
 
-            {/* Requires Analysis notice */}
-            {needsAnalysis && (
-              <div style={{
-                marginTop: '10px', padding: '8px 12px', borderRadius: '8px',
-                backgroundColor: '#fef9c3', border: '1px solid #fde047',
-                display: 'flex', alignItems: 'center', gap: '8px',
-              }}>
-                <span style={{ fontSize: '13px' }}>⚠</span>
-                <span style={{ fontSize: '12px', color: '#854d0e', fontWeight: '600' }}>
-                  Requires v2 analysis — click Analyze to run.
-                </span>
-              </div>
-            )}
 
             {isFailed && (
               <p style={{ margin: '8px 0 0', fontSize: '13px', color: '#dc2626' }}>
