@@ -59,7 +59,7 @@ router.get('/', authMiddleware, async (req, res) => {
       : `${GITHUB_API}/users/${github_username}/repos`;
     const response = await axios.get(apiUrl, {
       headers: makeGithubHeaders(github_access_token),
-      params: { per_page: limit, page, sort, type: 'owner', affiliation: 'owner' },
+      params: { per_page: limit, page, sort, type: 'owner' },
     });
 
     const repos = response.data.map(r => ({
