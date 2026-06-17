@@ -68,9 +68,6 @@ function Header({ onLogout }) {
   const [activeTab, setActiveTab]         = useState('browse')
   const [githubUsername, setGithubUsername] = useState(null)
   const [searchQuery, setSearchQuery]     = useState('')
-  const [githubInput, setGithubInput]     = useState('')
-  const [connecting, setConnecting]       = useState(false)
-  const [connectError, setConnectError]   = useState(null)
 
   useEffect(() => {
     fetchRepos()
@@ -142,29 +139,6 @@ function Header({ onLogout }) {
     }
   }
 
-  async function handleConnectGitHub(e) {
-    e.preventDefault()
-    if (!githubInput.trim() || connecting) return
-    setConnecting(true)
-    setConnectError(null)
-    const res = await authFetch(`${BASE_URL}/api/users/me/github`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ githubUsername: githubInput.trim() }),
-    }, onLogout)
-    if (!res) { setConnecting(false); return }
-    const json = await res.json()
-    setConnecting(false)
-    if (json.success) {
-      setGithubUsername(json.data.githubUsername)
-      setGithubInput('')
-      setLoading(true)
-      fetchRepos()
-    } else {
-      setConnectError(json.error?.message || 'Could not connect GitHub account.')
-    }
-  }
-
   function handleTabSwitch(tab) {
     setActiveTab(tab)
     if (tab === 'imported') fetchImportedRepos()
@@ -196,13 +170,9 @@ function Header({ onLogout }) {
           </h1>
         </div>
         <div className="flex items-center gap-3">
-          {githubUsername ? (
+          {githubUsername && (
             <div className="px-5 py-2 rounded-full border border-gray-200 bg-white shadow-sm text-green-600 font-semibold text-sm">
-              ✓ Connected: @{githubUsername}
-            </div>
-          ) : (
-            <div className="px-5 py-2 rounded-full border border-gray-200 bg-white shadow-sm text-amber-500 font-semibold text-sm">
-              ⚠ GitHub not connected
+              ✓ @{githubUsername}
             </div>
           )}
           <button
@@ -266,46 +236,21 @@ function Header({ onLogout }) {
         {/* ── Browse tab ─────────────────────────────────────────────────────── */}
         {activeTab === 'browse' && (
           <>
-            {/* Connect GitHub or filter repos */}
-            {!githubUsername ? (
-              <form onSubmit={handleConnectGitHub} className="mb-5">
-                <p className="text-sm text-gray-500 mb-2 font-medium">Enter your GitHub username to load your repositories</p>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    placeholder="e.g. octocat"
-                    value={githubInput}
-                    onChange={e => { setGithubInput(e.target.value); setConnectError(null) }}
-                    className="flex-1 px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                  />
-                  <button
-                    type="submit"
-                    disabled={connecting}
-                    className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-sm transition"
-                  >
-                    {connecting ? 'Connecting…' : 'Search'}
-                  </button>
-                </div>
-                {connectError && (
-                  <p className="mt-2 text-sm text-red-500">{connectError}</p>
-                )}
-              </form>
-            ) : (
-              <div className="flex items-center gap-3 mb-4">
-                <input
-                  type="text"
-                  placeholder="Search repositories…"
-                  value={searchQuery}
-                  onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1) }}
-                  className="flex-1 px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                />
-                {repos.length > 0 && (
-                  <p className="text-sm text-gray-400 whitespace-nowrap">
-                    {filteredRepos.length} of {repos.length} repos
-                  </p>
-                )}
-              </div>
-            )}
+            {/* Search / filter */}
+            <div className="flex items-center gap-3 mb-4">
+              <input
+                type="text"
+                placeholder="Search repositories…"
+                value={searchQuery}
+                onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1) }}
+                className="flex-1 px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              />
+              {repos.length > 0 && (
+                <p className="text-sm text-gray-400 whitespace-nowrap">
+                  {filteredRepos.length} of {repos.length} repos
+                </p>
+              )}
+            </div>
 
             {importSuccess && (
               <div className="flex items-center justify-between mb-4 px-4 py-3 rounded-xl border border-green-200 bg-green-50 text-green-700 text-sm font-medium">

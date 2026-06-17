@@ -21,11 +21,11 @@
 
 ## Repository Phase
 
-**Current Phase: M17 — Active Development (PDF Executive Typography — 32pt name, 13pt section titles)**
+**Current Phase: M19 — GitHub OAuth Authentication**
 
 | Layer | Status |
 |-------|--------|
-| Authentication & User Management | Verified |
+| Authentication & User Management | Integrated (GitHub OAuth) |
 | GitHub Repo Import | Verified |
 | Basic AI Analysis Pipeline | Verified |
 | Deep Analysis Pipeline (6-phase) | Integrated |
@@ -427,4 +427,48 @@ For each feature to be considered complete:
 
 ---
 
-*Last updated: 2026-06-17 — M18: Deterministic top_skills — shared techMaps.js module, portfolios.js override after narrative generation. M17b: name 32pt→24pt, contact 9.5pt→9pt.*
+---
+
+### M19 — GitHub OAuth Authentication *(2026-06-17)*
+
+**Scope:** Replace email/password login with GitHub OAuth. Users authenticate exclusively through GitHub — no registration form, no password.
+
+**Files created:**
+- `backend/db/migrations/20250101000006_add_github_oauth.js` — adds `github_access_token` column
+- `frontend/src/AuthCallback.jsx` — handles `/auth/callback?token=JWT` redirect from backend
+
+**Files modified:**
+- `backend/routes/auth.js` — replaced register/login/refresh with `GET /api/auth/github` (OAuth redirect) and `GET /api/auth/github/callback` (token exchange + user upsert + session create + JWT redirect). Logout changed to revoke session by JWT sessionId rather than refresh token.
+- `backend/routes/repos.js` — replaced static `GITHUB_HEADERS` / `getGithubUsername()` with dynamic `makeGithubHeaders(userToken)` / `getGithubInfo()`. When user has `github_access_token`, uses authenticated `GET /api/user/repos` (includes private repos); falls back to `GET /api/users/{username}/repos` with app token.
+- `frontend/src/App.jsx` — added `/auth/callback` route, removed register view
+- `frontend/src/LoginForm.jsx` — replaced email/password fields with single "Continue with GitHub" button
+- `frontend/src/Header.jsx` — removed manual "Connect GitHub" form and state; GitHub username is always set via OAuth
+- `backend/.env` — added `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_CALLBACK_URL`, `FRONTEND_URL`; changed `JWT_EXPIRES_IN` from `1h` to `7d`
+
+**User upsert strategy (3-tier):**
+1. Match by `github_user_id` (returning user)
+2. Match by email (links existing email/password account to GitHub)
+3. Create new user
+
+**Validation:**
+- Requires GitHub OAuth App to be created at github.com/settings/developers
+- `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` must be set in `.env` before the flow works
+- Manual end-to-end test: click login → authorize → dashboard with repos loaded
+
+**Risks / Limitations:**
+- Existing email/password users will be linked on next GitHub OAuth login (by email match)
+- Users with private GitHub emails get a generated `{id}+{login}@users.noreply.github.com` address
+- `JWT_EXPIRES_IN` in .env is now `7d` but the OAuth callback hardcodes `7d` — both must match if changed
+- `RegisterForm.jsx` still exists on disk but is no longer imported or routed
+
+**Environment variables required:**
+```
+GITHUB_CLIENT_ID=<from GitHub OAuth App>
+GITHUB_CLIENT_SECRET=<from GitHub OAuth App>
+GITHUB_CALLBACK_URL=http://localhost:5000/api/auth/github/callback
+FRONTEND_URL=http://localhost:5173
+```
+
+---
+
+*Last updated: 2026-06-17 — M19: GitHub OAuth replaces email/password auth. M18: Deterministic top_skills.*

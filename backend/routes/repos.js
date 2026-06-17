@@ -7,26 +7,33 @@ const { generateReadme } = require('../services/openai');
 const router = express.Router();
 
 const GITHUB_API = 'https://api.github.com';
-const GITHUB_HEADERS = {
-  'User-Agent': 'Repo2Reputation/1.0',
-  'Accept': 'application/vnd.github.v3+json',
-  ...(process.env.GITHUB_TOKEN && { Authorization: `token ${process.env.GITHUB_TOKEN}` }),
-};
 const README_MAX_REPO_SIZE_KB = 5120; // skip README fetch if repo > 5 MB
 
-async function getGithubUsername(userId) {
-  const result = await pool.query('SELECT github_username FROM users WHERE id = $1', [userId]);
-  return result.rows[0]?.github_username || null;
+function makeGithubHeaders(userToken) {
+  const token = userToken || process.env.GITHUB_TOKEN;
+  return {
+    'User-Agent': 'Repo2Reputation/1.0',
+    'Accept': 'application/vnd.github.v3+json',
+    ...(token && { Authorization: `token ${token}` }),
+  };
 }
 
-async function fetchReadme(owner, repo) {
+async function getGithubInfo(userId) {
+  const result = await pool.query(
+    'SELECT github_username, github_access_token FROM users WHERE id = $1',
+    [userId]
+  );
+  return result.rows[0] || {};
+}
+
+async function fetchReadme(owner, repo, userToken) {
   try {
     const response = await axios.get(`${GITHUB_API}/repos/${owner}/${repo}/readme`, {
-      headers: GITHUB_HEADERS,
+      headers: makeGithubHeaders(userToken),
     });
     return Buffer.from(response.data.content, 'base64').toString('utf-8');
   } catch {
-    return null; // 404 = no README, any other error = skip silently
+    return null;
   }
 }
 
@@ -38,17 +45,21 @@ router.get('/', authMiddleware, async (req, res) => {
   const sort  = req.query.sort || 'updated';
 
   try {
-    const github_username = await getGithubUsername(id);
+    const { github_username, github_access_token } = await getGithubInfo(id);
     if (!github_username) {
       return res.status(400).json({
         success: false,
-        error: { code: 'NO_GITHUB_CONNECTED', message: 'No GitHub username connected. Use PATCH /api/users/me/github first.' },
+        error: { code: 'NO_GITHUB_CONNECTED', message: 'GitHub account not connected.' },
       });
     }
 
-    const response = await axios.get(`${GITHUB_API}/users/${github_username}/repos`, {
-      headers: GITHUB_HEADERS,
-      params: { per_page: limit, page, sort, type: 'owner' },
+    // Use user's own token (lists private repos too) when available; fall back to app token
+    const apiUrl = github_access_token
+      ? `${GITHUB_API}/user/repos`
+      : `${GITHUB_API}/users/${github_username}/repos`;
+    const response = await axios.get(apiUrl, {
+      headers: makeGithubHeaders(github_access_token),
+      params: { per_page: limit, page, sort, type: 'owner', affiliation: 'owner' },
     });
 
     const repos = response.data.map(r => ({
@@ -128,12 +139,13 @@ router.post('/import', authMiddleware, async (req, res) => {
     });
   }
 
+  let ghInfo;
   try {
-    const github_username = await getGithubUsername(userId);
-    if (!github_username) {
+    ghInfo = await getGithubInfo(userId);
+    if (!ghInfo.github_username) {
       return res.status(400).json({
         success: false,
-        error: { code: 'NO_GITHUB_CONNECTED', message: 'Connect a GitHub username first via PATCH /api/users/me/github.' },
+        error: { code: 'NO_GITHUB_CONNECTED', message: 'GitHub account not connected.' },
       });
     }
   } catch (err) {
@@ -167,12 +179,12 @@ router.post('/import', authMiddleware, async (req, res) => {
     try {
       // Fetch repo details from GitHub
       const { data: repo } = await axios.get(`${GITHUB_API}/repos/${owner}/${repoName}`, {
-        headers: GITHUB_HEADERS,
+        headers: makeGithubHeaders(ghInfo.github_access_token),
       });
 
       // Fetch README only when repo is small enough to stay within rate limits
       const readmeContent = repo.size < README_MAX_REPO_SIZE_KB
-        ? await fetchReadme(owner, repoName)
+        ? await fetchReadme(owner, repoName, ghInfo.github_access_token)
         : null;
 
       // Upsert into repositories — update on re-import
