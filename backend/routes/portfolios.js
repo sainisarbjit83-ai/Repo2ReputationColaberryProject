@@ -5,6 +5,7 @@ const pool = require('../db/postgres');
 const authMiddleware = require('../middleware/authMiddleware');
 const { generatePortfolioNarrative, extractLinkedInProfile, generateProjectDescription } = require('../services/openai');
 const { generatePortfolioPdf } = require('../services/pdfGenerator');
+const { TECH_CATEGORIES, TECH_LABELS } = require('../services/techMaps');
 
 const router = express.Router();
 const upload  = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
@@ -481,7 +482,7 @@ router.post('/:id/generate-narrative', authMiddleware, async (req, res) => {
     }
 
     const reposResult = await pool.query(
-      `SELECT r.name, r.description,
+      `SELECT r.name, r.description, r.primary_language,
               a.skills_json, a.summary_json,
               da.inference_json, da.intelligence_json, da.code_intelligence_json
        FROM repositories r
@@ -536,6 +537,28 @@ router.post('/:id/generate-narrative', authMiddleware, async (req, res) => {
     setImmediate(async () => {
       try {
         const result = await generatePortfolioNarrative(analyses);
+
+        // Override AI top_skills with deterministic aggregation from code_intelligence_json
+        const techMap = new Map();
+        for (const row of reposResult.rows) {
+          const ci = row.code_intelligence_json;
+          for (const t of [...(ci?.technologies || []), ...(ci?.frameworks || [])]) {
+            if (!TECH_CATEGORIES[t]) continue;
+            const label = TECH_LABELS[t] || (t.charAt(0).toUpperCase() + t.slice(1));
+            if (!techMap.has(label)) {
+              techMap.set(label, { name: label, category: TECH_CATEGORIES[t], confidence: 0.9 });
+            }
+          }
+        }
+        for (const row of reposResult.rows) {
+          if (row.primary_language) {
+            const lang = row.primary_language;
+            if (!techMap.has(lang)) {
+              techMap.set(lang, { name: lang, category: 'Languages', confidence: 1.0 });
+            }
+          }
+        }
+        result.top_skills = [...techMap.values()].sort((a, b) => b.confidence - a.confidence);
 
         const completedContent = {
           ...updatedContent,

@@ -385,4 +385,46 @@ For each feature to be considered complete:
 
 ---
 
-*Last updated: 2026-06-15 — M17: Executive typography overhaul. 32pt name, 13pt section titles, 13pt regular headline, 3-sentence summary, extended domain map with AI variants and Software Engineer fallback, ROLE_MAP bug fix.*
+---
+
+### M17b — Name/contact size reduction *(2026-06-16)*
+
+**Files modified:**
+- `backend/services/pdfGenerator.js`:
+  - **CSS — name**: 32pt → 24pt (32pt was visually overwhelming)
+  - **CSS — contact row**: 9.5pt → 9pt (prevents wrapping on single-line contact row)
+
+**Validation:**
+- Manual PDF verification; name now proportional alongside 13pt section titles
+
+---
+
+### M18 — Deterministic top_skills *(2026-06-17)*
+
+**Problem:** AI-generated `top_skills` in portfolio narrative was non-deterministic — adding more repos caused skill count to drop (10 → 6) because OpenAI synthesizes and selects a subset.
+
+**Solution:** Replaced AI `top_skills` with deterministic aggregation from `code_intelligence_json.technologies` + `code_intelligence_json.frameworks` fields, filtered through the shared `TECH_CATEGORIES` map. Languages from `r.primary_language` are added with confidence 1.0.
+
+**Files created:**
+- `backend/services/techMaps.js` — shared `TECH_CATEGORIES` (40+ keys) and `TECH_LABELS` (display-name overrides), used by both pdfGenerator and portfolios route
+
+**Files modified:**
+- `backend/services/pdfGenerator.js`:
+  - Added `require('./techMaps')` import
+  - Removed inline `TECH_CATEGORIES` and `TECH_LABELS` definitions (now in shared module)
+- `backend/routes/portfolios.js`:
+  - Added `require('../services/techMaps')` import
+  - Added `r.primary_language` to SQL SELECT in generate-narrative route
+  - After `generatePortfolioNarrative()` resolves, deterministic `techMap` built from all repos' `code_intelligence_json`; `result.top_skills` overridden before saving to DB
+
+**Validation:**
+- Adding more repos to a portfolio will now increase or maintain skill count, never decrease it
+- Skills shown are exactly what's in the repo's `code_intelligence_json` — auditable, reproducible
+
+**Risks / Limitations:**
+- Only technologies in `TECH_CATEGORIES` are included; unknown packages are filtered out (intentional noise reduction)
+- Existing portfolios retain old AI-generated `top_skills` until re-generated
+
+---
+
+*Last updated: 2026-06-17 — M18: Deterministic top_skills — shared techMaps.js module, portfolios.js override after narrative generation. M17b: name 32pt→24pt, contact 9.5pt→9pt.*
