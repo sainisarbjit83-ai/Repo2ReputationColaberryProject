@@ -39,13 +39,17 @@ router.get('/github/callback', async (req, res) => {
       client_id:     process.env.GITHUB_CLIENT_ID,
       client_secret: process.env.GITHUB_CLIENT_SECRET,
       code,
-      redirect_uri:  process.env.GITHUB_CALLBACK_URL,
-    }, { headers: { Accept: 'application/json' } });
+    }, {
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      validateStatus: () => true, // handle all status codes ourselves
+    });
 
-    const accessToken = tokenRes.data.access_token;
-    if (!accessToken) {
+    if (tokenRes.status !== 200 || !tokenRes.data.access_token) {
+      console.error('[auth/github] token exchange failed — status:', tokenRes.status, 'body:', tokenRes.data);
       return res.redirect(`${frontendUrl}/auth/callback?error=token_exchange_failed`);
     }
+
+    const accessToken = tokenRes.data.access_token;
 
     const ghHeaders = { Authorization: `token ${accessToken}`, 'User-Agent': 'Repo2Reputation/1.0' };
 
