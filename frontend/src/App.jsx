@@ -4,6 +4,7 @@ import LoginForm from './LoginForm'
 import AuthCallback from './AuthCallback'
 import PublicPortfolio from './PublicPortfolio'
 import RecruiterSearch from './RecruiterSearch'
+import { BASE_URL } from './api'
 
 function App() {
   const path = window.location.pathname
@@ -33,7 +34,18 @@ function App() {
     setToken(newToken)
   }
 
-  const handleLogout = (message = null) => {
+  const handleLogout = async (message = null) => {
+    const currentToken = localStorage.getItem('token')
+    if (currentToken) {
+      try {
+        await fetch(`${BASE_URL}/api/auth/logout`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${currentToken}` },
+        })
+      } catch {
+        // best-effort — clear locally even if backend is unreachable
+      }
+    }
     localStorage.removeItem('token')
     setToken(null)
     setSessionMessage(message)
