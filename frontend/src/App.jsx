@@ -34,17 +34,14 @@ function App() {
     setToken(newToken)
   }
 
-  const handleLogout = async (message = null) => {
+  const handleLogout = (message = null) => {
     const currentToken = localStorage.getItem('token')
+    // Fire-and-forget backend revocation — don't await so UI clears immediately
     if (currentToken) {
-      try {
-        await fetch(`${BASE_URL}/api/auth/logout`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${currentToken}` },
-        })
-      } catch {
-        // best-effort — clear locally even if backend is unreachable
-      }
+      fetch(`${BASE_URL}/api/auth/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${currentToken}` },
+      }).catch(() => {})
     }
     localStorage.removeItem('token')
     setToken(null)

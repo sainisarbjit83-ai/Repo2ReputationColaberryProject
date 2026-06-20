@@ -80,8 +80,20 @@ function LoginForm({ sessionMessage }) {
           </button>
 
           <p className="mt-6 text-xs text-gray-400 text-center">
-            By continuing, you agree to allow Repo2Reputation to access your public GitHub profile and repositories.
+            By continuing, you agree to allow Repo2Reputation to access your GitHub profile and repositories.
           </p>
+
+          <div className="mt-5 pt-5 border-t border-gray-100 text-center">
+            <p className="text-xs text-gray-400 mb-2">Need to use a different GitHub account?</p>
+            <a
+              href="https://github.com/logout"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-indigo-500 hover:text-indigo-700 underline"
+            >
+              Sign out of GitHub first →
+            </a>
+          </div>
 
         </div>
       </div>

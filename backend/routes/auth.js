@@ -14,15 +14,13 @@ const OAUTH_SCOPES         = 'read:user user:email repo';
 const SESSION_DAYS         = 7;
 
 // GET /api/auth/github — redirect to GitHub OAuth authorization page
-// Routes through github.com/login so users can switch accounts instead of auto-signing in
 router.get('/github', (req, res) => {
-  const oauthParams = new URLSearchParams({
+  const params = new URLSearchParams({
     client_id: process.env.GITHUB_CLIENT_ID,
     scope:     OAUTH_SCOPES,
     state:     crypto.randomBytes(16).toString('hex'),
   });
-  const returnTo = `/login/oauth/authorize?${oauthParams}`;
-  res.redirect(`https://github.com/login?return_to=${encodeURIComponent(returnTo)}`);
+  res.redirect(`${GITHUB_AUTHORIZE_URL}?${params}`);
 });
 
 // GET /api/auth/github/callback — exchange code, upsert user, issue JWT, redirect to frontend
