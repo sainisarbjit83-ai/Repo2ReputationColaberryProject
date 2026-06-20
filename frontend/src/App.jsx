@@ -4,6 +4,7 @@ import LoginForm from './LoginForm'
 import AuthCallback from './AuthCallback'
 import PublicPortfolio from './PublicPortfolio'
 import RecruiterSearch from './RecruiterSearch'
+import Settings from './Settings'
 import { BASE_URL } from './api'
 
 function App() {
@@ -54,11 +55,11 @@ function App() {
   }
 
   if (!token) {
-    return (
-      <LoginForm
-        sessionMessage={sessionMessage}
-      />
-    )
+    return <LoginForm sessionMessage={sessionMessage} />
+  }
+
+  if (path === '/settings') {
+    return <Settings onLogout={handleLogout} />
   }
 
   return <Header onLogout={handleLogout} />

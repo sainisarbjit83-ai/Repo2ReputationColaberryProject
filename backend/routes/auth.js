@@ -13,46 +13,75 @@ const GITHUB_API           = 'https://api.github.com';
 const OAUTH_SCOPES         = 'read:user user:email repo';
 const SESSION_DAYS         = 7;
 
-// GET /api/auth/github — redirect to GitHub OAuth authorization page
+// GET /api/auth/github — redirect to GitHub OAuth
+// Optional: ?mode=connect&token=JWT  to link a second account to the current user
 router.get('/github', (req, res) => {
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const { mode, token } = req.query;
+
+  let statePayload = { nonce: crypto.randomBytes(16).toString('hex'), mode: 'login' };
+
+  if (mode === 'connect' && token) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      statePayload = { nonce: crypto.randomBytes(16).toString('hex'), mode: 'connect', userId: decoded.id };
+    } catch {
+      return res.redirect(`${frontendUrl}/settings?error=invalid_token`);
+    }
+  }
+
+  const state = jwt.sign(statePayload, process.env.JWT_SECRET, { expiresIn: '10m' });
   const params = new URLSearchParams({
     client_id: process.env.GITHUB_CLIENT_ID,
     scope:     OAUTH_SCOPES,
-    state:     crypto.randomBytes(16).toString('hex'),
+    state,
   });
   res.redirect(`${GITHUB_AUTHORIZE_URL}?${params}`);
 });
 
-// GET /api/auth/github/callback — exchange code, upsert user, issue JWT, redirect to frontend
+// GET /api/auth/github/callback — exchange code, upsert user, issue JWT
 router.get('/github/callback', async (req, res) => {
-  const { code, error } = req.query;
+  const { code, state, error } = req.query;
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 
   if (error || !code) {
     return res.redirect(`${frontendUrl}/auth/callback?error=access_denied`);
   }
 
+  // Decode signed state
+  let stateData = { mode: 'login' };
+  if (state) {
+    try {
+      stateData = jwt.verify(state, process.env.JWT_SECRET);
+    } catch {
+      // Unsigned state from old flows — treat as login
+      stateData = { mode: 'login' };
+    }
+  }
+
   try {
-    // 1. Exchange code for GitHub access token
+    // Exchange code for GitHub access token
     const tokenRes = await axios.post(GITHUB_TOKEN_URL, {
       client_id:     process.env.GITHUB_CLIENT_ID,
       client_secret: process.env.GITHUB_CLIENT_SECRET,
       code,
     }, {
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      validateStatus: () => true, // handle all status codes ourselves
+      validateStatus: () => true,
     });
 
     if (tokenRes.status !== 200 || !tokenRes.data.access_token) {
       console.error('[auth/github] token exchange failed — status:', tokenRes.status, 'body:', tokenRes.data);
-      return res.redirect(`${frontendUrl}/auth/callback?error=token_exchange_failed`);
+      const errDest = stateData.mode === 'connect'
+        ? `${frontendUrl}/settings?error=token_exchange_failed`
+        : `${frontendUrl}/auth/callback?error=token_exchange_failed`;
+      return res.redirect(errDest);
     }
 
     const accessToken = tokenRes.data.access_token;
-
     const ghHeaders = { Authorization: `token ${accessToken}`, 'User-Agent': 'Repo2Reputation/1.0' };
 
-    // 2. Fetch profile + emails in parallel
+    // Fetch GitHub profile + emails
     const [profileRes, emailsRes] = await Promise.all([
       axios.get(`${GITHUB_API}/user`, { headers: ghHeaders }),
       axios.get(`${GITHUB_API}/user/emails`, { headers: ghHeaders }).catch(() => ({ data: [] })),
@@ -64,7 +93,6 @@ router.get('/github/callback', async (req, res) => {
     const name           = profile.name || profile.login;
     const avatarUrl      = profile.avatar_url;
 
-    // Pick best email: verified primary non-noreply → any primary → profile email → generated
     const emails = Array.isArray(emailsRes.data) ? emailsRes.data : [];
     const primaryEmail =
       emails.find(e => e.primary && e.verified && !e.email.includes('noreply'))?.email ||
@@ -72,7 +100,33 @@ router.get('/github/callback', async (req, res) => {
       profile.email ||
       `${githubId}+${githubUsername}@users.noreply.github.com`;
 
-    // 3. Upsert user: match by github_user_id first, then by email (to link existing accounts)
+    // ── CONNECT MODE: link additional account to existing user ────────────────
+    if (stateData.mode === 'connect' && stateData.userId) {
+      const targetUserId = stateData.userId;
+
+      // Check if this GitHub account is already connected anywhere
+      const existing = await pool.query(
+        'SELECT user_id FROM github_accounts WHERE github_user_id = $1',
+        [githubId]
+      );
+
+      if (existing.rows[0]) {
+        const conflict = existing.rows[0].user_id === targetUserId
+          ? 'already_connected'
+          : 'account_taken';
+        return res.redirect(`${frontendUrl}/settings?error=${conflict}`);
+      }
+
+      await pool.query(
+        `INSERT INTO github_accounts (user_id, github_user_id, github_username, github_email, access_token, avatar_url, is_primary)
+         VALUES ($1, $2, $3, $4, $5, $6, false)`,
+        [targetUserId, githubId, githubUsername, primaryEmail, accessToken, avatarUrl]
+      );
+
+      return res.redirect(`${frontendUrl}/settings?connected=true`);
+    }
+
+    // ── LOGIN MODE: upsert user + primary github_account ─────────────────────
     let userId;
     const byGithubId = await pool.query('SELECT id FROM users WHERE github_user_id = $1', [githubId]);
 
@@ -108,7 +162,19 @@ router.get('/github/callback', async (req, res) => {
       }
     }
 
-    // 4. Create session (7-day expiry — matches JWT)
+    // Keep github_accounts in sync with the primary account
+    await pool.query(
+      `INSERT INTO github_accounts (user_id, github_user_id, github_username, github_email, access_token, avatar_url, is_primary)
+       VALUES ($1, $2, $3, $4, $5, $6, true)
+       ON CONFLICT (github_user_id) DO UPDATE SET
+         github_username = EXCLUDED.github_username,
+         github_email    = EXCLUDED.github_email,
+         access_token    = EXCLUDED.access_token,
+         avatar_url      = EXCLUDED.avatar_url`,
+      [userId, githubId, githubUsername, primaryEmail, accessToken, avatarUrl]
+    );
+
+    // Create session
     const refreshTokenHash = crypto.createHash('sha256')
       .update(crypto.randomBytes(64))
       .digest('hex');
@@ -121,19 +187,20 @@ router.get('/github/callback', async (req, res) => {
     );
     const sessionId = sessionResult.rows[0].id;
 
-    // 5. Issue JWT
     const token = jwt.sign(
       { id: userId, sessionId },
       process.env.JWT_SECRET,
       { expiresIn: `${SESSION_DAYS}d` }
     );
 
-    // 6. Redirect to frontend callback page with token
     return res.redirect(`${frontendUrl}/auth/callback?token=${encodeURIComponent(token)}`);
 
   } catch (err) {
     console.error('[auth/github/callback] error:', err.message);
-    return res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/callback?error=server_error`);
+    const dest = stateData.mode === 'connect'
+      ? `${process.env.FRONTEND_URL || 'http://localhost:5173'}/settings?error=server_error`
+      : `${process.env.FRONTEND_URL || 'http://localhost:5173'}/auth/callback?error=server_error`;
+    return res.redirect(dest);
   }
 });
 

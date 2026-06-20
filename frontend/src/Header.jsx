@@ -181,6 +181,12 @@ function Header({ onLogout }) {
               <span className="text-sm font-semibold text-gray-700">@{githubUsername}</span>
             </div>
           )}
+          <a
+            href="/settings"
+            className="px-4 py-2 rounded-full border border-gray-200 bg-white hover:bg-gray-50 transition font-semibold text-sm text-gray-700"
+          >
+            Settings
+          </a>
           <button
             onClick={onLogout}
             className="px-5 py-2 rounded-full border border-gray-200 bg-white hover:bg-gray-50 transition font-semibold text-sm"

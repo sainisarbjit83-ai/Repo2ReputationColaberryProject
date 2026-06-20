@@ -21,11 +21,11 @@
 
 ## Repository Phase
 
-**Current Phase: M19 — GitHub OAuth Authentication**
+**Current Phase: M20 — Multi-GitHub-Account Support**
 
 | Layer | Status |
 |-------|--------|
-| Authentication & User Management | Integrated (GitHub OAuth) |
+| Authentication & User Management | Integrated (GitHub OAuth + multi-account) |
 | GitHub Repo Import | Verified |
 | Basic AI Analysis Pipeline | Verified |
 | Deep Analysis Pipeline (6-phase) | Integrated |
@@ -181,6 +181,59 @@ New Analysis Panel tabs: Overview (Executive Intelligence Dashboard), Architectu
   - Added `cleanProjectDescription()` to strip repo-centric language from project taglines
   - Added implied language/skill inference (SQL if PostgreSQL, JavaScript if TypeScript, LLM/RAG pattern skills)
   - Added `isGenericBullet()` filter to block assessment-style output
+
+---
+
+### M19 — GitHub OAuth Authentication *(2026-06-20)*
+
+Replaced email/password auth with GitHub OAuth 2.0.
+
+**Files created/modified:**
+- `backend/db/migrations/20250101000006_add_github_oauth.js` — adds `github_access_token` column
+- `backend/routes/auth.js` — complete rewrite: `/github` redirect, `/github/callback` code exchange + user upsert, `/logout` session revocation
+- `backend/routes/repos.js` — `getGithubInfo()` reads `github_access_token` from `users`; removed `affiliation` param (422 fix)
+- `backend/routes/users.js` — stripped to `GET /me` only (removed `PATCH /me/github`)
+- `frontend/src/AuthCallback.jsx` — NEW: handles `/auth/callback?token=` redirect from GitHub
+- `frontend/src/LoginForm.jsx` — GitHub OAuth button only; "sign out of GitHub first" tip
+- `frontend/src/Header.jsx` — shows avatar + username from `/api/users/me`; no GitHub connect form
+- `frontend/src/App.jsx` — imports AuthCallback, fire-and-forget logout
+- Deleted: `frontend/src/RegisterForm.jsx`, `backend/middleware/loginRateLimiter.js`
+- Uninstalled: `bcrypt`
+
+**Validation:** Manual OAuth flow tested. Login, logout, session revocation verified.
+
+---
+
+### M20 — Multi-GitHub-Account Support *(2026-06-20)*
+
+Allows users to connect multiple GitHub accounts. Repos from all accounts appear in Browse.
+
+**Files created:**
+- `backend/db/migrations/20250101000015_create_github_accounts.js` — creates `github_accounts` table, adds `github_account_id` FK to `repositories`, migrates existing `users.github_user_id` data
+- `backend/routes/githubAccounts.js` — `GET /api/github-accounts` (list), `DELETE /api/github-accounts/:id` (disconnect secondary)
+- `frontend/src/Settings.jsx` — Settings page: connected accounts list with primary badge, "Connect Another GitHub Account" button, disconnect button for secondaries, error/success banners
+
+**Files modified:**
+- `backend/routes/auth.js` — `GET /api/auth/github` now accepts `?mode=connect&token=JWT` to link a second account; state is now a signed JWT (prevents spoofing, 10-min TTL); callback handles `mode=connect` path: inserts into `github_accounts`, redirects to `/settings?connected=true`; login path upserts into both `users` and `github_accounts`
+- `backend/routes/repos.js` — added `getGithubAccounts(userId)` reading from `github_accounts`; `GET /api/repos` fetches from all connected accounts in parallel (100 per account), merges + sorts by updated date; `POST /api/repos/import` selects token by matching repo owner to account username
+- `backend/server.js` — registers `githubAccountsRouter` at `/api/github-accounts`
+- `frontend/src/App.jsx` — imports `Settings`, adds `/settings` authenticated route
+- `frontend/src/Header.jsx` — adds "Settings" nav link in navbar
+
+**Database changes:**
+- New table: `github_accounts` (id, user_id FK, github_user_id UNIQUE, github_username, github_email, access_token, avatar_url, is_primary, connected_at)
+- New column: `repositories.github_account_id` (UUID FK, nullable, SET NULL on account delete)
+- Migrated: existing users with `github_user_id` set → inserted into `github_accounts` as primary accounts (Sarbjit83, sainisarbjit83-ai)
+
+**Validation:**
+- Migration applied directly (node-pg-migrate blocked by pre-existing duplicate `000006` naming conflict)
+- All backend files pass `node --check` syntax validation
+- DB migration confirmed: `Sarbjit83` and `sainisarbjit83-ai` migrated to `github_accounts`
+
+**Known gaps:**
+- `repositories.github_account_id` is not populated on import (set NULL); only new imports after connect will populate it
+- No automated tests added
+- The `/api/auth/github/connect` flow requires GitHub to prompt the user to log in to a different account; the "sign out of GitHub first" tip on the Settings page covers this
 
 ---
 

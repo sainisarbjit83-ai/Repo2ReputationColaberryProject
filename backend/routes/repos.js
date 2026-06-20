@@ -26,6 +26,17 @@ async function getGithubInfo(userId) {
   return result.rows[0] || {};
 }
 
+async function getGithubAccounts(userId) {
+  const result = await pool.query(
+    `SELECT id, github_username, access_token, is_primary
+     FROM github_accounts
+     WHERE user_id = $1
+     ORDER BY is_primary DESC, connected_at ASC`,
+    [userId]
+  );
+  return result.rows;
+}
+
 async function fetchReadme(owner, repo, userToken) {
   try {
     const response = await axios.get(`${GITHUB_API}/repos/${owner}/${repo}/readme`, {
@@ -37,59 +48,74 @@ async function fetchReadme(owner, repo, userToken) {
   }
 }
 
-// GET /api/repos — list GitHub repos for the connected user (from GitHub API)
+function mapGithubRepo(r, accountUsername) {
+  return {
+    externalRepoId:  String(r.id),
+    name:            r.name,
+    fullName:        r.full_name,
+    description:     r.description || null,
+    private:         r.private,
+    language:        r.language || null,
+    starsCount:      r.stargazers_count,
+    forksCount:      r.forks_count,
+    topics:          r.topics || [],
+    defaultBranch:   r.default_branch,
+    repoCreatedAt:   r.created_at,
+    repoUpdatedAt:   r.updated_at,
+    sizeKb:          r.size,
+    accountUsername,
+  };
+}
+
+// GET /api/repos — list GitHub repos across all connected accounts
 router.get('/', authMiddleware, async (req, res) => {
   const { id } = req.user;
-  const page  = parseInt(req.query.page)  || 1;
-  const limit = Math.min(parseInt(req.query.limit) || 30, 100);
-  const sort  = req.query.sort || 'updated';
+  const sort = req.query.sort || 'updated';
 
   try {
-    const { github_username, github_access_token } = await getGithubInfo(id);
-    if (!github_username) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'NO_GITHUB_CONNECTED', message: 'GitHub account not connected.' },
-      });
+    // Try github_accounts first (multi-account); fall back to users table
+    let accounts = await getGithubAccounts(id);
+
+    if (!accounts.length) {
+      const info = await getGithubInfo(id);
+      if (!info.github_username) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'NO_GITHUB_CONNECTED', message: 'GitHub account not connected.' },
+        });
+      }
+      accounts = [{ github_username: info.github_username, access_token: info.github_access_token, is_primary: true }];
     }
 
-    // Use user's own token (lists private repos too) when available; fall back to app token
-    const apiUrl = github_access_token
-      ? `${GITHUB_API}/user/repos`
-      : `${GITHUB_API}/users/${github_username}/repos`;
-    const response = await axios.get(apiUrl, {
-      headers: makeGithubHeaders(github_access_token),
-      params: { per_page: limit, page, sort, type: 'owner' },
-    });
+    // Fetch from all accounts in parallel (up to 100 repos each)
+    const perAccountResults = await Promise.all(
+      accounts.map(async (account) => {
+        try {
+          const apiUrl = account.access_token
+            ? `${GITHUB_API}/user/repos`
+            : `${GITHUB_API}/users/${account.github_username}/repos`;
+          const response = await axios.get(apiUrl, {
+            headers: makeGithubHeaders(account.access_token),
+            params: { per_page: 100, sort, type: 'owner' },
+          });
+          return response.data.map(r => mapGithubRepo(r, account.github_username));
+        } catch (err) {
+          console.error(`[repos] fetch failed for ${account.github_username}:`, err.message);
+          return [];
+        }
+      })
+    );
 
-    const repos = response.data.map(r => ({
-      externalRepoId: String(r.id),
-      name: r.name,
-      fullName: r.full_name,
-      description: r.description || null,
-      private: r.private,
-      language: r.language || null,
-      starsCount: r.stargazers_count,
-      forksCount: r.forks_count,
-      topics: r.topics || [],
-      defaultBranch: r.default_branch,
-      repoCreatedAt: r.created_at,
-      repoUpdatedAt: r.updated_at,
-      sizeKb: r.size,
-    }));
+    const repos = perAccountResults
+      .flat()
+      .sort((a, b) => new Date(b.repoUpdatedAt) - new Date(a.repoUpdatedAt));
 
     return res.status(200).json({
       success: true,
       data: repos,
-      meta: { page, limit, count: repos.length },
+      meta: { count: repos.length, accountCount: accounts.length },
     });
   } catch (err) {
-    if (err.response?.status === 404) {
-      return res.status(404).json({ success: false, error: { code: 'GITHUB_USER_NOT_FOUND', message: 'GitHub user not found.' } });
-    }
-    if (err.response?.status === 403 || err.response?.status === 429) {
-      return res.status(429).json({ success: false, error: { code: 'RATE_LIMITED', message: 'GitHub API rate limit exceeded. Try again later.' } });
-    }
     console.error('[repos] list error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to fetch repositories.' } });
   }
@@ -139,14 +165,18 @@ router.post('/import', authMiddleware, async (req, res) => {
     });
   }
 
-  let ghInfo;
+  let accounts;
   try {
-    ghInfo = await getGithubInfo(userId);
-    if (!ghInfo.github_username) {
-      return res.status(400).json({
-        success: false,
-        error: { code: 'NO_GITHUB_CONNECTED', message: 'GitHub account not connected.' },
-      });
+    accounts = await getGithubAccounts(userId);
+    if (!accounts.length) {
+      const info = await getGithubInfo(userId);
+      if (!info.github_username) {
+        return res.status(400).json({
+          success: false,
+          error: { code: 'NO_GITHUB_CONNECTED', message: 'GitHub account not connected.' },
+        });
+      }
+      accounts = [{ github_username: info.github_username, access_token: info.github_access_token, is_primary: true }];
     }
   } catch (err) {
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Server error.' } });
@@ -161,6 +191,13 @@ router.post('/import', authMiddleware, async (req, res) => {
       continue;
     }
     const [owner, repoName] = parts;
+
+    // Pick the account whose username matches the repo owner; fall back to primary
+    const matchingAccount =
+      accounts.find(a => a.github_username.toLowerCase() === owner.toLowerCase()) ||
+      accounts.find(a => a.is_primary) ||
+      accounts[0];
+    const ghInfo = { github_access_token: matchingAccount?.access_token };
 
     // Create import job record (repository_id linked after successful fetch)
     let jobId;
