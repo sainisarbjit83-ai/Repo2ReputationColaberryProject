@@ -67,6 +67,7 @@ function Header({ onLogout }) {
   const [currentPage, setCurrentPage]     = useState(1)
   const [activeTab, setActiveTab]         = useState('browse')
   const [githubUsername, setGithubUsername] = useState(null)
+  const [avatarUrl, setAvatarUrl]         = useState(null)
   const [searchQuery, setSearchQuery]     = useState('')
 
   useEffect(() => {
@@ -80,6 +81,7 @@ function Header({ onLogout }) {
     if (!res) return
     const json = await res.json()
     setGithubUsername(json.github_username || null)
+    setAvatarUrl(json.avatar_url || null)
   }
 
   async function fetchRepos() {
@@ -171,8 +173,12 @@ function Header({ onLogout }) {
         </div>
         <div className="flex items-center gap-3">
           {githubUsername && (
-            <div className="px-5 py-2 rounded-full border border-gray-200 bg-white shadow-sm text-green-600 font-semibold text-sm">
-              ✓ @{githubUsername}
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-200 bg-white shadow-sm">
+              {avatarUrl
+                ? <img src={avatarUrl} alt={githubUsername} className="w-6 h-6 rounded-full" />
+                : <span className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 text-xs font-bold">{githubUsername[0].toUpperCase()}</span>
+              }
+              <span className="text-sm font-semibold text-gray-700">@{githubUsername}</span>
             </div>
           )}
           <button
