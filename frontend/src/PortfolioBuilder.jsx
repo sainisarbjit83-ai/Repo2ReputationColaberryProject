@@ -376,11 +376,12 @@ function MediaInput({ repoName, value, onChange }) {
   )
 }
 
-function PortfolioBuilder({ onLogout }) {
+function PortfolioBuilder({ onLogout, onGoToBrowse }) {
   // Data loading
   const [importedRepos, setImportedRepos] = useState([])
   const [analysisMap, setAnalysisMap]     = useState({})
   const [loading, setLoading]             = useState(true)
+  const [loadError, setLoadError]         = useState(null)
 
   // Step 1 — form
   const [title, setTitle]       = useState('')
@@ -458,9 +459,20 @@ function PortfolioBuilder({ onLogout }) {
   }, [portfolio])
 
   async function loadRepos() {
+    setLoadError(null)
     const res = await authFetch(`${BASE_URL}/api/repos/imported`, {}, onLogout)
-    if (!res) return
+    if (!res) { setLoading(false); return }
+    if (!res.ok) {
+      setLoadError(`API error ${res.status} — check backend logs`)
+      setLoading(false)
+      return
+    }
     const json = await res.json()
+    if (!json.success) {
+      setLoadError(json.error?.message || 'Failed to load repositories')
+      setLoading(false)
+      return
+    }
     const repos = json.data || []
     setImportedRepos(repos)
 
@@ -468,12 +480,12 @@ function PortfolioBuilder({ onLogout }) {
       const dRes = await authFetch(`${BASE_URL}/api/deep-analysis/${repo.id}/latest`, {}, onLogout)
       if (!dRes) return
       const dJson = await dRes.json()
-      if (dJson?.success && dJson.data.status === 'completed') {
+      if (dJson?.success && ['completed', 'partial'].includes(dJson.data.status)) {
         const d = dJson.data
         setAnalysisMap(prev => ({
           ...prev,
           [repo.id]: {
-            status:          'completed',
+            status:          dJson.data.status,
             confidenceScore: d.confidenceScore,
             technologies:    d.codeIntelligence?.technologies?.map(t => ({ name: t, category: 'Other', confidence: 1 })) || [],
             summary:         d.intelligence?.executiveSummary?.overview || null,
@@ -815,7 +827,7 @@ function PortfolioBuilder({ onLogout }) {
   }
 
   const analyzedRepos = importedRepos
-    .filter(r => analysisMap[r.id]?.status === 'completed')
+    .filter(r => ['completed', 'partial'].includes(analysisMap[r.id]?.status))
     .sort((a, b) => (analysisMap[b.id]?.confidenceScore ?? 0) - (analysisMap[a.id]?.confidenceScore ?? 0))
 
   // ── Step 4: Published ──────────────────────────────────────────────────────
@@ -1389,10 +1401,61 @@ function PortfolioBuilder({ onLogout }) {
 
       {loading ? (
         <p style={{ color: '#6b7280', fontSize: '14px' }}>Loading repositories…</p>
+      ) : loadError ? (
+        <div style={{ padding: '24px 0', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <p style={{ color: '#dc2626', fontSize: '14px', margin: 0 }}>Failed to load repositories: {loadError}</p>
+          <button onClick={loadRepos} style={{ alignSelf: 'flex-start', padding: '8px 16px', borderRadius: '8px', border: '1px solid #e5e7eb', background: 'white', cursor: 'pointer', fontSize: '13px' }}>↻ Retry</button>
+        </div>
       ) : analyzedRepos.length === 0 ? (
-        <p style={{ color: '#6b7280', fontSize: '14px' }}>
-          No analyzed repositories yet. Go to the Imported Repos tab and run analysis first.
-        </p>
+        <div style={{ padding: '24px 0', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {importedRepos.length === 0 ? (
+            <>
+              <p style={{ color: '#6b7280', fontSize: '14px', margin: 0 }}>
+                No repositories imported yet. Select and import repositories to get started.
+              </p>
+              {onGoToBrowse && (
+                <button
+                  onClick={onGoToBrowse}
+                  style={{
+                    alignSelf: 'flex-start',
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: '#4f46e5',
+                    color: '#fff',
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Browse GitHub Repos →
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <p style={{ color: '#6b7280', fontSize: '14px', margin: 0 }}>
+                <strong>{importedRepos.length} {importedRepos.length === 1 ? 'repository' : 'repositories'} imported</strong> — analysis is running in the background. This usually takes 1–2 minutes.
+              </p>
+              <button
+                onClick={loadRepos}
+                style={{
+                  alignSelf: 'flex-start',
+                  padding: '6px 14px',
+                  borderRadius: '8px',
+                  border: '1px solid #d1d5db',
+                  background: '#fff',
+                  color: '#374151',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                ↻ Refresh
+              </button>
+            </>
+          )}
+        </div>
       ) : (
         <>
           {/* Title input */}

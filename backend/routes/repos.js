@@ -3,6 +3,8 @@ const axios = require('axios');
 const pool = require('../db/postgres');
 const authMiddleware = require('../middleware/authMiddleware');
 const { generateReadme } = require('../services/openai');
+const { queueAnalysis }     = require('../services/analysisQueue');
+const { queueDeepAnalysis } = require('../services/deepAnalysisQueue');
 
 const router = express.Router();
 
@@ -67,53 +69,87 @@ function mapGithubRepo(r, accountUsername) {
   };
 }
 
-// GET /api/repos — list GitHub repos across all connected accounts
+// GET /api/repos — list GitHub repos for the logged-in user + any extra usernames
+// ?extra=username1,username2  adds public repos from those GitHub usernames
 router.get('/', authMiddleware, async (req, res) => {
   const { id } = req.user;
   const sort = req.query.sort || 'updated';
+  const extraUsernames = req.query.extra
+    ? req.query.extra.split(',').map(u => u.trim()).filter(Boolean)
+    : [];
 
   try {
-    // Try github_accounts first (multi-account); fall back to users table
-    let accounts = await getGithubAccounts(id);
-
-    if (!accounts.length) {
-      const info = await getGithubInfo(id);
-      if (!info.github_username) {
-        return res.status(400).json({
-          success: false,
-          error: { code: 'NO_GITHUB_CONNECTED', message: 'GitHub account not connected.' },
-        });
-      }
-      accounts = [{ github_username: info.github_username, access_token: info.github_access_token, is_primary: true }];
+    // Primary account: try github_accounts, fall back to users table
+    const primaryInfo = await getGithubInfo(id);
+    if (!primaryInfo.github_username) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'NO_GITHUB_CONNECTED', message: 'GitHub account not connected.' },
+      });
     }
 
-    // Fetch from all accounts in parallel (up to 100 repos each)
-    const perAccountResults = await Promise.all(
-      accounts.map(async (account) => {
+    // Fetch primary account repos (authenticated — includes private)
+    const primaryApiUrl = primaryInfo.github_access_token
+      ? `${GITHUB_API}/user/repos`
+      : `${GITHUB_API}/users/${primaryInfo.github_username}/repos`;
+
+    const primaryResponse = await axios.get(primaryApiUrl, {
+      headers: makeGithubHeaders(primaryInfo.github_access_token),
+      params: { per_page: 100, sort, type: 'owner' },
+    });
+    const primaryRepos = primaryResponse.data.map(r => mapGithubRepo(r, primaryInfo.github_username));
+
+    // Secondary connected accounts — fetch with stored OAuth token (private repos included)
+    const allAccounts = await getGithubAccounts(id);
+    const secondaryAccounts = allAccounts.filter(a => !a.is_primary);
+    const connectedUsernames = new Set(allAccounts.map(a => a.github_username.toLowerCase()));
+
+    const secondaryResults = await Promise.all(
+      secondaryAccounts.map(async (account) => {
         try {
-          const apiUrl = account.access_token
-            ? `${GITHUB_API}/user/repos`
-            : `${GITHUB_API}/users/${account.github_username}/repos`;
-          const response = await axios.get(apiUrl, {
+          const response = await axios.get(`${GITHUB_API}/user/repos`, {
             headers: makeGithubHeaders(account.access_token),
             params: { per_page: 100, sort, type: 'owner' },
           });
           return response.data.map(r => mapGithubRepo(r, account.github_username));
         } catch (err) {
-          console.error(`[repos] fetch failed for ${account.github_username}:`, err.message);
+          console.error(`[repos] secondary account ${account.github_username} fetch failed:`, err.message);
           return [];
         }
       })
     );
+    const secondaryRepos = secondaryResults.flat();
 
-    const repos = perAccountResults
-      .flat()
+    // Extra public usernames — skip any already connected via OAuth (avoids duplicates)
+    const extraResults = await Promise.all(
+      extraUsernames
+        .filter(u => !connectedUsernames.has(u.toLowerCase()))
+        .map(async (username) => {
+          try {
+            const response = await axios.get(`${GITHUB_API}/users/${username}/repos`, {
+              headers: makeGithubHeaders(null),
+              params: { per_page: 100, sort, type: 'owner' },
+            });
+            return response.data.map(r => mapGithubRepo(r, username));
+          } catch (err) {
+            const status = err.response?.status;
+            if (status === 404) return { error: `GitHub user @${username} not found`, username };
+            return [];
+          }
+        })
+    );
+
+    // Separate errors from valid repo arrays
+    const extraErrors = extraResults.filter(r => r && r.error);
+    const extraRepos  = extraResults.filter(Array.isArray).flat();
+
+    const repos = [...primaryRepos, ...secondaryRepos, ...extraRepos]
       .sort((a, b) => new Date(b.repoUpdatedAt) - new Date(a.repoUpdatedAt));
 
     return res.status(200).json({
       success: true,
       data: repos,
-      meta: { count: repos.length, accountCount: accounts.length },
+      meta: { count: repos.length, extraErrors },
     });
   } catch (err) {
     console.error('[repos] list error:', err.message);
@@ -236,6 +272,7 @@ router.post('/import', authMiddleware, async (req, res) => {
            $11, $12, $13, $14, NOW(), 'synced', NOW(), NOW()
          )
          ON CONFLICT (provider, external_repo_id) DO UPDATE SET
+           user_id          = EXCLUDED.user_id,
            name             = EXCLUDED.name,
            full_name        = EXCLUDED.full_name,
            description      = EXCLUDED.description,
@@ -277,11 +314,31 @@ router.post('/import', authMiddleware, async (req, res) => {
         [repositoryId, jobId]
       );
 
+      // Auto-queue basic analysis — non-blocking
+      let analysisId = null;
+      try {
+        const analysisResult = await queueAnalysis(repositoryId);
+        analysisId = analysisResult.analysisId;
+      } catch (analysisErr) {
+        console.error('[repos] basic analysis queue failed for', fullName, ':', analysisErr.message);
+      }
+
+      // Auto-queue deep analysis — non-blocking
+      let deepAnalysisId = null;
+      try {
+        const deepResult = await queueDeepAnalysis(repositoryId, userId);
+        deepAnalysisId = deepResult?.analysisId ?? null;
+      } catch (deepErr) {
+        console.error('[repos] deep analysis queue failed for', fullName, ':', deepErr.message);
+      }
+
       results.push({
         fullName,
         status: 'succeeded',
         jobId,
         repositoryId,
+        analysisId,
+        deepAnalysisId,
         readmeFetched: readmeContent !== null,
       });
     } catch (err) {

@@ -69,12 +69,75 @@ function Header({ onLogout }) {
   const [githubUsername, setGithubUsername] = useState(null)
   const [avatarUrl, setAvatarUrl]         = useState(null)
   const [searchQuery, setSearchQuery]     = useState('')
+  const [extraUsernames, setExtraUsernames] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('r2r_extra_usernames') || '[]') } catch { return [] }
+  })
+  const [usernameInput, setUsernameInput] = useState('')
+  const [extraErrors, setExtraErrors]     = useState([])
+  const [selectedAccounts, setSelectedAccounts] = useState(new Set())
+  const [showOnboarding, setShowOnboarding] = useState(
+    () => localStorage.getItem('r2r_onboarding_dismissed') !== 'true'
+  )
+  const [removeConfirm, setRemoveConfirm]       = useState(null)
+  const [connectedAccounts, setConnectedAccounts] = useState([])
+  const [connectBanner, setConnectBanner]         = useState(null)
 
   useEffect(() => {
     fetchRepos()
     fetchImportedRepos()
     fetchCurrentUser()
+    fetchConnectedAccounts()
+
+    // Handle return from GitHub OAuth account-connect flow (?connected=username in URL)
+    const params = new URLSearchParams(window.location.search)
+    const justConnected = params.get('connected')
+    if (justConnected) {
+      setConnectBanner(justConnected)
+      window.history.replaceState({}, '', '/')
+    }
   }, [])
+
+  // ── Derived ───────────────────────────────────────────────────────────────────
+
+  const importedFullNames = new Set(importedRepos.map(r => r.full_name))
+
+  const repoCounts = repos.reduce((acc, r) => {
+    const key = (r.accountUsername || '').toLowerCase()
+    acc[key] = (acc[key] || 0) + 1
+    return acc
+  }, {})
+
+  const allAccounts = [
+    ...(githubUsername ? [{ username: githubUsername, isPrimary: true, isConnected: true, hasPrivateAccess: true }] : []),
+    // Secondary accounts connected via OAuth — include private repos
+    ...connectedAccounts
+      .filter(a => !a.is_primary)
+      .map(a => ({ username: a.github_username, isPrimary: false, isConnected: true, hasPrivateAccess: true, accountId: a.id })),
+    // Public-only extra usernames — skip if already connected via OAuth
+    ...extraUsernames
+      .filter(u => !connectedAccounts.some(a => a.github_username.toLowerCase() === u.toLowerCase()))
+      .map(u => ({ username: u, isPrimary: false, isConnected: false, hasPrivateAccess: false })),
+  ]
+
+  // Empty selectedAccounts = show all; otherwise union of selected accounts
+  const accountFiltered = selectedAccounts.size === 0
+    ? repos
+    : repos.filter(r =>
+        selectedAccounts.has((r.accountUsername || githubUsername || '').toLowerCase())
+      )
+
+  const filteredRepos = searchQuery.trim()
+    ? accountFiltered.filter(r =>
+        r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (r.description || '').toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : accountFiltered
+
+  const totalPages = Math.max(1, Math.ceil(filteredRepos.length / PAGE_SIZE))
+  const startIdx   = (currentPage - 1) * PAGE_SIZE
+  const pageRepos  = filteredRepos.slice(startIdx, startIdx + PAGE_SIZE)
+
+  // ── Data fetchers ─────────────────────────────────────────────────────────────
 
   async function fetchCurrentUser() {
     const res = await authFetch(`${BASE_URL}/api/users/me`, {}, onLogout)
@@ -84,11 +147,13 @@ function Header({ onLogout }) {
     setAvatarUrl(json.avatar_url || null)
   }
 
-  async function fetchRepos() {
-    const res = await authFetch(`${BASE_URL}/api/repos`, {}, onLogout)
+  async function fetchRepos(extra = extraUsernames) {
+    const params = extra.length > 0 ? `?extra=${extra.join(',')}` : ''
+    const res = await authFetch(`${BASE_URL}/api/repos${params}`, {}, onLogout)
     if (!res) return
     const json = await res.json()
     setRepos(json.data || [])
+    setExtraErrors(json.meta?.extraErrors || [])
     setCurrentPage(1)
     setLoading(false)
   }
@@ -101,7 +166,76 @@ function Header({ onLogout }) {
     setImportedCount(json.meta?.total || 0)
   }
 
+  async function fetchConnectedAccounts() {
+    const res = await authFetch(`${BASE_URL}/api/github-accounts`, {}, onLogout)
+    if (!res) return
+    const json = await res.json()
+    if (json.success) setConnectedAccounts(json.data || [])
+  }
+
+  function connectGithubAccount() {
+    const token = localStorage.getItem('token')
+    window.location.href = `${BASE_URL}/api/auth/github?mode=connect&token=${encodeURIComponent(token)}`
+  }
+
+  async function disconnectGithubAccount(accountId, username) {
+    const res = await authFetch(`${BASE_URL}/api/github-accounts/${accountId}`, { method: 'DELETE' }, onLogout)
+    if (!res) return
+    setConnectedAccounts(prev => prev.filter(a => a.id !== accountId))
+    setSelectedAccounts(prev => { const next = new Set(prev); next.delete(username.toLowerCase()); return next })
+    setRemoveConfirm(null)
+    fetchRepos()
+  }
+
+  // ── Handlers ──────────────────────────────────────────────────────────────────
+
+  function toggleAccountFilter(username) {
+    const key = username.toLowerCase()
+    setSelectedAccounts(prev => {
+      const next = new Set(prev)
+      next.has(key) ? next.delete(key) : next.add(key)
+      return next
+    })
+    setCurrentPage(1)
+  }
+
+  function addExtraUsername() {
+    let raw = usernameInput.trim()
+    // If a GitHub URL was pasted (e.g. https://github.com/username or .../username/repo),
+    // extract just the username (first path segment after the host)
+    try {
+      const url = new URL(raw)
+      if (url.hostname === 'github.com') {
+        raw = url.pathname.split('/').filter(Boolean)[0] || raw
+      }
+    } catch { /* not a URL — use as-is */ }
+    const u = raw.replace(/^@/, '')
+    if (!u || extraUsernames.map(x => x.toLowerCase()).includes(u.toLowerCase())) {
+      setUsernameInput('')
+      return
+    }
+    const next = [...extraUsernames, u]
+    setExtraUsernames(next)
+    localStorage.setItem('r2r_extra_usernames', JSON.stringify(next))
+    setUsernameInput('')
+    fetchRepos(next)
+  }
+
+  function removeExtraUsername(u) {
+    const next = extraUsernames.filter(x => x !== u)
+    setExtraUsernames(next)
+    localStorage.setItem('r2r_extra_usernames', JSON.stringify(next))
+    setSelectedAccounts(prev => {
+      const nextSet = new Set(prev)
+      nextSet.delete(u.toLowerCase())
+      return nextSet
+    })
+    setRemoveConfirm(null)
+    fetchRepos(next)
+  }
+
   function toggleSelect(fullName) {
+    if (importedFullNames.has(fullName)) return
     setSelected(prev => {
       const next = new Set(prev)
       next.has(fullName) ? next.delete(fullName) : next.add(fullName)
@@ -133,9 +267,13 @@ function Header({ onLogout }) {
     if (json.success) {
       const succeeded = json.data.results.filter(r => r.status === 'succeeded').length
       const failed    = json.data.results.filter(r => r.status === 'failed').length
-      setImportSuccess(failed > 0 ? `${succeeded} succeeded, ${failed} failed` : `${succeeded} succeeded`)
       setSelected(new Set())
       fetchImportedRepos()
+      if (failed > 0) {
+        setImportError(`${failed} ${failed === 1 ? 'repository' : 'repositories'} failed to import.`)
+      }
+      // Auto-switch to Portfolio Builder — analysis is running in the background
+      setActiveTab('portfolio')
     } else {
       setImportError(json.error?.message || 'Import failed.')
     }
@@ -143,19 +281,14 @@ function Header({ onLogout }) {
 
   function handleTabSwitch(tab) {
     setActiveTab(tab)
-    if (tab === 'imported') fetchImportedRepos()
   }
 
-  // Pagination derived values (browse tab only)
-  const filteredRepos = searchQuery.trim()
-    ? repos.filter(r =>
-        r.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (r.description || '').toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : repos
-  const totalPages = Math.max(1, Math.ceil(filteredRepos.length / PAGE_SIZE))
-  const startIdx   = (currentPage - 1) * PAGE_SIZE
-  const pageRepos  = filteredRepos.slice(startIdx, startIdx + PAGE_SIZE)
+  function dismissOnboarding() {
+    localStorage.setItem('r2r_onboarding_dismissed', 'true')
+    setShowOnboarding(false)
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
@@ -181,12 +314,6 @@ function Header({ onLogout }) {
               <span className="text-sm font-semibold text-gray-700">@{githubUsername}</span>
             </div>
           )}
-          <a
-            href="/settings"
-            className="px-4 py-2 rounded-full border border-gray-200 bg-white hover:bg-gray-50 transition font-semibold text-sm text-gray-700"
-          >
-            Settings
-          </a>
           <button
             onClick={onLogout}
             className="px-5 py-2 rounded-full border border-gray-200 bg-white hover:bg-gray-50 transition font-semibold text-sm"
@@ -196,51 +323,45 @@ function Header({ onLogout }) {
         </div>
       </div>
 
-      {/* REPO SECTION */}
+      {/* MAIN SECTION */}
       <div className="mt-4 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
 
         {/* Tabs + Import button */}
         <div className="flex items-center justify-between mb-5 border-b border-gray-100 pb-4">
           <div className="flex items-center gap-6">
-            <button
-              onClick={() => handleTabSwitch('browse')}
-              className={`font-semibold text-sm pb-3 -mb-4 transition ${
-                activeTab === 'browse'
-                  ? 'text-indigo-600 border-b-2 border-indigo-600'
-                  : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              Browse GitHub Repos
-            </button>
-            <button
-              onClick={() => handleTabSwitch('imported')}
-              className={`font-semibold text-sm pb-3 -mb-4 transition ${
-                activeTab === 'imported'
-                  ? 'text-indigo-600 border-b-2 border-indigo-600'
-                  : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              Imported Repos ({importedCount})
-            </button>
-            <button
-              onClick={() => handleTabSwitch('portfolio')}
-              className={`font-semibold text-sm pb-3 -mb-4 transition ${
-                activeTab === 'portfolio'
-                  ? 'text-indigo-600 border-b-2 border-indigo-600'
-                  : 'text-gray-400 hover:text-gray-600'
-              }`}
-            >
-              My Portfolio
-            </button>
+            {[
+              { key: 'browse',    label: 'Browse GitHub Repos' },
+              { key: 'portfolio', label: 'My Portfolio' },
+            ].map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => handleTabSwitch(tab.key)}
+                className={`font-semibold text-sm pb-3 -mb-4 transition ${
+                  activeTab === tab.key
+                    ? 'text-indigo-600 border-b-2 border-indigo-600'
+                    : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
 
           {activeTab === 'browse' && (
             <button
               onClick={handleImport}
-              disabled={importing}
-              className="px-5 py-2.5 rounded-xl text-white font-semibold text-sm shadow-sm transition bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60"
+              disabled={importing || selected.size === 0}
+              className={`px-5 py-2.5 rounded-xl font-semibold text-sm shadow-sm transition ${
+                selected.size === 0
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed border border-gray-200'
+                  : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+              }`}
             >
-              {importing ? 'Importing…' : `Import Selected (${selected.size})`}
+              {importing
+                ? 'Importing…'
+                : selected.size === 0
+                ? 'Select repositories to import'
+                : `Import ${selected.size} ${selected.size === 1 ? 'Repository' : 'Repositories'}`}
             </button>
           )}
         </div>
@@ -248,7 +369,192 @@ function Header({ onLogout }) {
         {/* ── Browse tab ─────────────────────────────────────────────────────── */}
         {activeTab === 'browse' && (
           <>
-            {/* Search / filter */}
+            {/* ONBOARDING CARD */}
+            {showOnboarding && (
+              <div className="mb-5 px-5 py-4 rounded-xl border border-indigo-100 bg-indigo-50 relative">
+                <button
+                  onClick={dismissOnboarding}
+                  className="absolute top-3 right-3 text-indigo-300 hover:text-indigo-500 text-lg leading-none"
+                >×</button>
+                <p className="text-xs font-semibold text-indigo-500 mb-3 uppercase tracking-wide">How it works</p>
+                <div className="flex items-center gap-3 flex-wrap">
+                  {[
+                    { n: '1', label: 'Select repositories' },
+                    { n: '2', label: 'Click Import' },
+                    { n: '3', label: 'Repo2Reputation analyzes your projects' },
+                    { n: '4', label: 'Generate your portfolio' },
+                  ].map((s, i, arr) => (
+                    <div key={s.n} className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                          {s.n}
+                        </div>
+                        <span className="text-xs text-indigo-800 font-medium">{s.label}</span>
+                      </div>
+                      {i < arr.length - 1 && <span className="text-indigo-300 text-sm">→</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Connect-success banner */}
+            {connectBanner && (
+              <div className="flex items-center justify-between mb-4 px-4 py-3 rounded-xl border border-green-200 bg-green-50 text-green-700 text-sm font-medium">
+                <span>✓ @{connectBanner} connected — private repositories are now accessible</span>
+                <button onClick={() => setConnectBanner(null)} className="text-green-500 hover:text-green-700 text-lg leading-none ml-4">×</button>
+              </div>
+            )}
+
+            {/* CONNECTED ACCOUNT CARDS — clickable filters */}
+            {!loading && allAccounts.length > 0 && (
+              <div className="flex flex-wrap gap-3 mb-5">
+                {allAccounts.map(acc => {
+                  const key         = acc.username.toLowerCase()
+                  const isSelected  = selectedAccounts.has(key)
+                  const isConfirming = removeConfirm === acc.username
+                  const count       = repoCounts[key] || 0
+
+                  return (
+                    <div
+                      key={acc.username}
+                      onClick={() => !isConfirming && toggleAccountFilter(acc.username)}
+                      className={`flex items-center gap-3 px-4 py-3 rounded-xl border-2 transition select-none ${
+                        isConfirming
+                          ? 'border-red-200 bg-red-50 cursor-default'
+                          : isSelected
+                          ? 'border-indigo-400 bg-indigo-50 shadow-sm cursor-pointer'
+                          : 'border-gray-200 bg-gray-50 hover:border-gray-300 cursor-pointer'
+                      }`}
+                    >
+                      {/* Avatar — shows checkmark when selected */}
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm flex-shrink-0 transition ${
+                        isSelected
+                          ? 'bg-indigo-600 text-white'
+                          : acc.isPrimary
+                          ? 'bg-indigo-100 text-indigo-600'
+                          : acc.isConnected
+                          ? 'bg-green-100 text-green-600'
+                          : 'bg-slate-100 text-slate-500'
+                      }`}>
+                        {isSelected
+                          ? (
+                            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                            </svg>
+                          )
+                          : acc.username[0].toUpperCase()
+                        }
+                      </div>
+
+                      {/* Account info */}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={`text-sm font-semibold truncate ${isSelected ? 'text-indigo-900' : 'text-gray-900'}`}>
+                            @{acc.username}
+                          </span>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                            isSelected
+                              ? 'bg-indigo-200 text-indigo-800'
+                              : acc.isPrimary
+                              ? 'bg-indigo-100 text-indigo-700'
+                              : acc.isConnected
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-slate-100 text-slate-600'
+                          }`}>
+                            {acc.isPrimary ? 'Primary Account' : acc.isConnected ? 'Connected Account' : 'Public Account'}
+                          </span>
+                          {isSelected && (
+                            <span className="text-xs font-semibold text-indigo-600">Viewing</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className={`text-xs ${isSelected ? 'text-indigo-600' : 'text-gray-500'}`}>
+                            {count} {count === 1 ? 'repository' : 'repositories'}
+                          </span>
+                          <span className={`text-xs ${isSelected ? 'text-indigo-300' : 'text-gray-300'}`}>·</span>
+                          <span className={`text-xs font-medium ${
+                            isSelected
+                              ? 'text-indigo-500'
+                              : acc.hasPrivateAccess
+                              ? 'text-green-500'
+                              : 'text-gray-400'
+                          }`}>
+                            {acc.hasPrivateAccess ? '🔒 Public + Private' : '🌐 Public Only'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Remove button (non-primary accounts only) */}
+                      {!acc.isPrimary && (
+                        <div className="ml-1 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                          {isConfirming ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs text-red-600 font-medium whitespace-nowrap">Remove?</span>
+                              <button
+                                onClick={() => acc.isConnected
+                                  ? disconnectGithubAccount(acc.accountId, acc.username)
+                                  : removeExtraUsername(acc.username)
+                                }
+                                className="px-2 py-1 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-semibold transition"
+                              >Yes</button>
+                              <button
+                                onClick={() => setRemoveConfirm(null)}
+                                className="px-2 py-1 rounded-lg bg-white hover:bg-gray-100 text-gray-600 text-xs font-semibold border border-gray-200 transition"
+                              >Cancel</button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={() => setRemoveConfirm(acc.username)}
+                              className={`text-lg leading-none transition ${
+                                isSelected ? 'text-indigo-300 hover:text-red-400' : 'text-gray-300 hover:text-red-400'
+                              }`}
+                              title="Remove this account from your repository view"
+                            >×</button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+
+                {/* Add accounts — connect (OAuth) or add public username */}
+                <div className="flex flex-col justify-center gap-2">
+                  {/* Connect via OAuth — gets private repos */}
+                  <button
+                    onClick={connectGithubAccount}
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed border-green-400 bg-green-50 hover:bg-green-100 text-green-700 text-xs font-semibold transition w-52"
+                  >
+                    <span>🔗</span>
+                    <span>Connect GitHub Account</span>
+                  </button>
+                  <p className="text-xs text-green-600 pl-1">OAuth login — includes private repos</p>
+
+                  {/* Add public username — no auth */}
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <input
+                      type="text"
+                      placeholder="+ Add Public Username"
+                      value={usernameInput}
+                      onChange={e => setUsernameInput(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && addExtraUsername()}
+                      className="px-3 py-2 rounded-xl border border-dashed border-gray-300 text-xs text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-300 w-52"
+                    />
+                    {usernameInput.trim() && (
+                      <button
+                        onClick={addExtraUsername}
+                        className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition"
+                      >
+                        Add
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400 pl-1">Public repos only — no login required</p>
+                </div>
+              </div>
+            )}
+
+            {/* SEARCH */}
             <div className="flex items-center gap-3 mb-4">
               <input
                 type="text"
@@ -257,13 +563,21 @@ function Header({ onLogout }) {
                 onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1) }}
                 className="flex-1 px-4 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-300"
               />
-              {repos.length > 0 && (
+              {!loading && repos.length > 0 && searchQuery.trim() && (
                 <p className="text-sm text-gray-400 whitespace-nowrap">
-                  {filteredRepos.length} of {repos.length} repos
+                  {filteredRepos.length} of {repos.length}
                 </p>
               )}
             </div>
 
+            {/* Extra username errors */}
+            {extraErrors.map(e => (
+              <div key={e.username} className="mb-3 px-3 py-2 rounded-xl border border-amber-200 bg-amber-50 text-amber-700 text-xs">
+                {e.error}
+              </div>
+            ))}
+
+            {/* Import status banners */}
             {importSuccess && (
               <div className="flex items-center justify-between mb-4 px-4 py-3 rounded-xl border border-green-200 bg-green-50 text-green-700 text-sm font-medium">
                 <span>✓ Import complete — {importSuccess}</span>
@@ -277,35 +591,93 @@ function Header({ onLogout }) {
               </div>
             )}
 
+            {/* REPO LIST */}
             <div className="space-y-3">
               {loading ? (
-                <p className="text-gray-400 text-sm py-4">Loading repositories…</p>
+                <div className="flex flex-col items-center py-12 text-center">
+                  <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                    <svg className="w-5 h-5 text-gray-400 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  </div>
+                  <p className="text-sm text-gray-400">Loading your repositories…</p>
+                </div>
               ) : filteredRepos.length === 0 ? (
-                <p className="text-gray-400 text-sm py-4">
-                  {repos.length === 0
-                    ? 'No repositories found for this GitHub account.'
-                    : `No repositories match "${searchQuery}".`}
-                </p>
+                repos.length === 0 ? (
+                  <div className="flex flex-col items-center py-12 text-center">
+                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                      <svg className="w-5 h-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5a3 3 0 013-3h12a3 3 0 013 3v9a3 3 0 01-3 3H6a3 3 0 01-3-3v-9z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 10.5h18" />
+                      </svg>
+                    </div>
+                    <p className="font-semibold text-gray-700 mb-1">No repositories found</p>
+                    <p className="text-sm text-gray-400">Your connected GitHub account doesn't have any repositories yet.</p>
+                  </div>
+                ) : selectedAccounts.size > 0 && !searchQuery.trim() ? (
+                  <div className="flex flex-col items-center py-12 text-center">
+                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                      <svg className="w-5 h-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+                      </svg>
+                    </div>
+                    <p className="font-semibold text-gray-700 mb-1">No repositories for this account</p>
+                    <button
+                      onClick={() => { setSelectedAccounts(new Set()); setCurrentPage(1) }}
+                      className="mt-3 text-xs font-semibold text-indigo-500 hover:text-indigo-600"
+                    >
+                      Show all accounts
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center py-12 text-center">
+                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+                      <svg className="w-5 h-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 15.803 7.5 7.5 0 0015.803 15.803z" />
+                      </svg>
+                    </div>
+                    <p className="font-semibold text-gray-700 mb-1">No results for "{searchQuery}"</p>
+                    <p className="text-sm text-gray-400">Try a different name or description keyword.</p>
+                    <button
+                      onClick={() => { setSearchQuery(''); setCurrentPage(1) }}
+                      className="mt-3 text-xs font-semibold text-indigo-500 hover:text-indigo-600"
+                    >
+                      Clear search
+                    </button>
+                  </div>
+                )
               ) : (
                 pageRepos.map((repo) => {
-                  const isChecked = selected.has(repo.fullName)
-                  const updated   = formatDate(repo.repoUpdatedAt)
-                  const topics    = repo.topics || []
+                  const isChecked  = selected.has(repo.fullName)
+                  const isImported = importedFullNames.has(repo.fullName)
+                  const updated    = formatDate(repo.repoUpdatedAt)
+                  const topics     = repo.topics || []
+                  const owner      = repo.accountUsername || githubUsername || ''
 
                   return (
                     <div
                       key={repo.fullName}
-                      className="group flex items-center justify-between p-4 rounded-xl border border-gray-200 bg-white hover:shadow-sm transition cursor-pointer"
+                      className={`flex items-center justify-between p-4 rounded-xl border transition ${
+                        isImported
+                          ? 'border-gray-100 bg-gray-50 cursor-default'
+                          : isChecked
+                          ? 'border-indigo-300 bg-indigo-50 cursor-pointer'
+                          : 'border-gray-200 bg-white hover:shadow-sm cursor-pointer'
+                      }`}
                       onClick={() => toggleSelect(repo.fullName)}
                     >
                       <div className="flex items-center gap-4 flex-1 min-w-0">
                         <input
                           type="checkbox"
                           checked={isChecked}
+                          disabled={isImported}
                           onChange={() => toggleSelect(repo.fullName)}
                           onClick={e => e.stopPropagation()}
-                          className="w-4 h-4 accent-indigo-600 flex-shrink-0"
+                          className="w-4 h-4 accent-indigo-600 flex-shrink-0 disabled:opacity-40"
                         />
+
+                        {/* Language icon */}
                         <div
                           className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden"
                           style={{
@@ -319,39 +691,77 @@ function Header({ onLogout }) {
                             : <span className="text-white text-xs font-bold">{(repo.language || '?').slice(0, 2).toUpperCase()}</span>
                           }
                         </div>
+
                         <div className="flex-1 min-w-0">
-                          <p className="font-bold text-gray-900 text-sm">{repo.name}</p>
+                          {/* Row 1: name + owner badge + imported badge */}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className={`font-bold text-base leading-tight ${isImported ? 'text-gray-500' : 'text-gray-900'}`}>
+                              {repo.name}
+                            </p>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-xs font-medium border border-slate-200 whitespace-nowrap">
+                              <span className="text-slate-400 font-normal">Owner:</span>
+                              @{owner}
+                            </span>
+                            {isImported && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-50 text-green-700 text-xs font-semibold border border-green-200 whitespace-nowrap">
+                                ✓ Imported
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Description */}
                           {repo.description && (
-                            <p className="text-xs text-gray-500 mt-0.5 truncate max-w-lg">{repo.description}</p>
+                            <p className="text-xs text-gray-500 mt-0.5 truncate max-w-xl">{repo.description}</p>
                           )}
+
+                          {/* Topics */}
                           {topics.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5 mt-2">
+                            <div className="flex flex-wrap gap-1.5 mt-1.5">
                               {topics.map(tag => (
-                                <span key={tag} className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs border border-gray-200">
+                                <span key={tag} className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs border border-gray-200">
                                   {tag}
                                 </span>
                               ))}
                             </div>
                           )}
-                          <div className="flex items-center gap-2 mt-2">
-                            <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold border" style={{ backgroundColor: langColor(repo.language) + '18', borderColor: langColor(repo.language) + '55', color: langColor(repo.language) }}>
-                              <span className="w-2 h-2 rounded-full inline-block flex-shrink-0" style={{ backgroundColor: langColor(repo.language) }} />
+
+                          {/* Language · visibility · date */}
+                          <div className="flex items-center gap-2 mt-2 flex-wrap">
+                            <span
+                              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold border"
+                              style={{
+                                backgroundColor: langColor(repo.language) + '18',
+                                borderColor:     langColor(repo.language) + '55',
+                                color:           langColor(repo.language),
+                              }}
+                            >
+                              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: langColor(repo.language) }} />
                               {repo.language || 'Unknown'}
                             </span>
-                            {updated && <span className="text-xs text-gray-400">Updated: {updated}</span>}
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium border ${
+                              repo.private
+                                ? 'bg-gray-50 text-gray-500 border-gray-200'
+                                : 'bg-green-50 text-green-600 border-green-200'
+                            }`}>
+                              {repo.private ? '🔒 Private' : '🌐 Public'}
+                            </span>
+                            {updated && <span className="text-xs text-gray-400">Updated {updated}</span>}
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3 ml-6 flex-shrink-0">
+                      {/* GitHub link */}
+                      <div className="flex items-center ml-6 flex-shrink-0">
                         <a
                           href={`https://github.com/${repo.fullName}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={e => e.stopPropagation()}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50 bg-white transition-colors"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-600 hover:text-indigo-600 hover:border-indigo-300 hover:bg-indigo-50 bg-white transition-colors"
                         >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/></svg>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z" />
+                          </svg>
                           GitHub
                         </a>
                       </div>
@@ -361,7 +771,7 @@ function Header({ onLogout }) {
               )}
             </div>
 
-            {/* Pagination */}
+            {/* PAGINATION */}
             {!loading && filteredRepos.length > PAGE_SIZE && (
               <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-100">
                 <p className="text-sm text-gray-500">
@@ -372,9 +782,7 @@ function Header({ onLogout }) {
                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
                     className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition text-sm"
-                  >
-                    ‹
-                  </button>
+                  >‹</button>
                   {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
                     <button
                       key={page}
@@ -384,31 +792,25 @@ function Header({ onLogout }) {
                           ? 'bg-indigo-600 border-indigo-600 text-white'
                           : 'border-gray-200 text-gray-600 hover:bg-gray-50'
                       }`}
-                    >
-                      {page}
-                    </button>
+                    >{page}</button>
                   ))}
                   <button
                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                     disabled={currentPage === totalPages}
                     className="w-8 h-8 rounded-lg border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed transition text-sm"
-                  >
-                    ›
-                  </button>
+                  >›</button>
                 </div>
               </div>
             )}
           </>
         )}
 
-        {/* ── Imported Repos tab ─────────────────────────────────────────────── */}
-        {activeTab === 'imported' && (
-          <AnalysisPanel importedRepos={importedRepos} onLogout={onLogout} />
-        )}
-
         {/* ── Portfolio tab ──────────────────────────────────────────────────── */}
         {activeTab === 'portfolio' && (
-          <PortfolioBuilder onLogout={onLogout} />
+          <PortfolioBuilder
+            onLogout={onLogout}
+            onGoToBrowse={() => handleTabSwitch('browse')}
+          />
         )}
 
       </div>

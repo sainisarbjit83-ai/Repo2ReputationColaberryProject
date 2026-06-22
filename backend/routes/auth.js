@@ -123,7 +123,7 @@ router.get('/github/callback', async (req, res) => {
         [targetUserId, githubId, githubUsername, primaryEmail, accessToken, avatarUrl]
       );
 
-      return res.redirect(`${frontendUrl}/settings?connected=true`);
+      return res.redirect(`${frontendUrl}/?connected=${encodeURIComponent(githubUsername)}`);
     }
 
     // ── LOGIN MODE: upsert user + primary github_account ─────────────────────
@@ -162,15 +162,17 @@ router.get('/github/callback', async (req, res) => {
       }
     }
 
-    // Keep github_accounts in sync with the primary account
+    // Sync github_accounts: if this github_user_id exists (even as secondary), take ownership
     await pool.query(
       `INSERT INTO github_accounts (user_id, github_user_id, github_username, github_email, access_token, avatar_url, is_primary)
        VALUES ($1, $2, $3, $4, $5, $6, true)
        ON CONFLICT (github_user_id) DO UPDATE SET
+         user_id         = EXCLUDED.user_id,
          github_username = EXCLUDED.github_username,
          github_email    = EXCLUDED.github_email,
          access_token    = EXCLUDED.access_token,
-         avatar_url      = EXCLUDED.avatar_url`,
+         avatar_url      = EXCLUDED.avatar_url,
+         is_primary      = true`,
       [userId, githubId, githubUsername, primaryEmail, accessToken, avatarUrl]
     );
 

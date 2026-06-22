@@ -237,6 +237,83 @@ Allows users to connect multiple GitHub accounts. Repos from all accounts appear
 
 ---
 
+### M22 — Browse GitHub Repos Final UX Polish *(2026-06-21)*
+
+Final polish pass on Browse GitHub Repos page. Frontend-only changes to `frontend/src/Header.jsx`.
+
+**What changed:**
+
+1. **Repository summary bar** — 3-column stat strip (`repos.length` Repositories · `allAccounts.length` Connected Accounts · `selected.size` Selected) placed between filter chips and search bar; Selected count turns indigo when >0; hidden while loading
+
+2. **Owner badge upgrade** — replaced plain gray `@username` text with a styled pill: `Owner: @username` in slate-100 background with border; immediately scannable when browsing
+
+3. **Improved empty states** — 3 distinct states with centered icon + heading + subtext:
+   - Loading: spinning icon + "Loading your repositories…"
+   - No repos at all: box icon + "No repositories found"
+   - Account filter active, no match: person icon + "No repositories for this account" + "Show all accounts" link
+   - Search query, no match: magnifier icon + `No results for "query"` + "Clear search" button
+
+4. **Onboarding card wording** updated to match spec: "Select repositories" → "Click Import" → "Repo2Reputation analyzes your projects" → "Generate your portfolio"
+
+5. **Account card labels** — "Primary" badge → "Primary Account"; non-primary → "Public Account"; "repos" → "repositories"; avatar initial changes to slate color for public accounts
+
+6. **Remove confirmation** — clicking × on a public account card sets `removeConfirm` state; card turns red-tinted and shows inline "Remove? [Yes] [Cancel]" instead of immediate removal; "Yes" calls `removeExtraUsername`; "Cancel" clears confirm state
+
+7. **Visual hierarchy** — repo name bumped to `text-base font-bold`; owner badge is a pill with visible border; imported badge also uses bordered pill style; topics use muted gray; description stays `text-xs`
+
+**New state:**
+- `removeConfirm` — `string | null`, the username pending removal confirmation
+
+**Constraints respected:** No backend API changes, no auth changes, no import logic changes.
+
+---
+
+### M21 — Browse GitHub Repos UX Overhaul *(2026-06-21)*
+
+Comprehensive UX improvements to the Browse GitHub Repos page. No backend changes.
+
+**Files modified:**
+- `frontend/src/Header.jsx` — full rewrite of Browse tab UI
+
+**What changed:**
+
+1. **First-time onboarding card** — 4-step guide (Browse → Select → Import → Portfolio) shown above repo list on first visit; dismissed via × button and stored in `localStorage('r2r_onboarding_dismissed')`
+
+2. **Connected accounts summary cards** — displayed above the search bar; each card shows avatar initial, @username, Primary badge (for signed-in account), repo count, and access level ("Public + Private" vs "Public Only"); non-primary accounts have × remove button on the card itself (replaces separate chips section)
+
+3. **"Add Public GitHub Account" input** — moved inline with the account cards; dashed-border input shows "Add" button only when text is entered; helper text below explains public-only limitation
+
+4. **Account-level filter chips** — shown only when 2+ accounts are active; "All Repositories (N)" + per-account "@username (N)" chips; active chip is filled indigo; selecting a chip resets pagination; removed filter is auto-reset to "all"
+
+5. **Owner badge on every repo card** — `@accountUsername` shown on every card always (not just when extras are active)
+
+6. **Public/Private visibility badge** — 🔒 Private (gray) or 🌐 Public (green) badge on every repo card
+
+7. **"✓ Imported" badge** — repos already in `importedRepos` (matched by `full_name`) show a green badge; their checkbox is disabled; card row is not clickable for selection; `toggleSelect()` early-returns if repo is imported
+
+8. **Import button state** — disabled (gray, "Select repositories to import") when nothing is selected; enabled ("Import N Repository/Repositories") when 1+ selected; no styling hack needed — proper disabled state via class switching
+
+9. **Visual hierarchy** — tabs row uses consistent `pb-3 -mb-4` underline style; import success/error banners have × dismiss buttons; pagination shows "X–Y of Z repositories" label; search bar shows "N of M repos" count when repos are loaded
+
+**New state variables:**
+- `accountFilter` — `'all' | 'primary' | username` — drives account filter chip selection
+- `showOnboarding` — boolean from localStorage, toggled by dismiss button
+
+**New derived values:**
+- `importedFullNames` — `Set<string>` of `full_name` from `importedRepos`
+- `repoCounts` — `{ [accountUsername]: number }` map built from `repos` array
+- `allAccounts` — `[{ username, isPrimary }]` from `githubUsername` + `extraUsernames`
+- `accountFiltered` — `repos` pre-filtered by `accountFilter` before search filter applied
+
+**Validation:** Frontend-only change; no backend API changes, no auth changes, no import logic changes.
+
+**Risks / Limitations:**
+- Onboarding card is dismissed once per device (localStorage key); no server-side state
+- `repoCounts` may show 0 briefly for primary account until `fetchCurrentUser()` completes
+- No automated tests added for the new UI logic
+
+---
+
 ### M14 — Resume PDF Language & Layout Polish *(2026-06-15)*
 
 **Files modified:**
