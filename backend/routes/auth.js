@@ -31,11 +31,20 @@ router.get('/github', (req, res) => {
   }
 
   const state = jwt.sign(statePayload, process.env.JWT_SECRET, { expiresIn: '10m' });
-  const params = new URLSearchParams({
+  const oauthQuery = {
     client_id: process.env.GITHUB_CLIENT_ID,
     scope:     OAUTH_SCOPES,
     state,
-  });
+  };
+
+  // If a login hint is provided in connect mode, include it so GitHub forces the
+  // user to sign in as that specific account rather than reusing the current session.
+  const { login: loginHint } = req.query;
+  if (statePayload.mode === 'connect' && loginHint) {
+    oauthQuery.login = loginHint;
+  }
+
+  const params = new URLSearchParams(oauthQuery);
   res.redirect(`${GITHUB_AUTHORIZE_URL}?${params}`);
 });
 

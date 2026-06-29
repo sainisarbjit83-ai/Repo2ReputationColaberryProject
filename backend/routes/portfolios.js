@@ -825,6 +825,36 @@ router.post('/:id/generate-project-descriptions', authMiddleware, async (req, re
   }
 });
 
+// POST /api/portfolios/extract-linkedin — upload PDF, extract profile fields, return JSON (no DB save)
+router.post('/extract-linkedin', authMiddleware, upload.single('pdf'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: { code: 'NO_FILE', message: 'No PDF file uploaded.' } });
+  }
+  const originalName = req.file.originalname?.toLowerCase() || '';
+  const allowedTypes = ['application/pdf', 'application/octet-stream', 'binary/octet-stream'];
+  if (!allowedTypes.includes(req.file.mimetype) && !originalName.endsWith('.pdf')) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_FILE', message: 'Please upload a PDF file.' } });
+  }
+
+  let rawText = '';
+  try {
+    rawText = (await extractPdfText(req.file.buffer)).trim();
+  } catch (err) {
+    return res.status(422).json({ success: false, error: { code: 'PARSE_FAILED', message: 'Could not read the PDF. Use LinkedIn → Me → Save to PDF.' } });
+  }
+  if (rawText.length < 50) {
+    return res.status(422).json({ success: false, error: { code: 'EMPTY_PDF', message: 'No text found. Use LinkedIn "Save to PDF" from your profile page.' } });
+  }
+
+  try {
+    const extracted = await extractLinkedInProfile(rawText);
+    return res.json({ success: true, data: extracted });
+  } catch (err) {
+    console.error('[extract-linkedin] OpenAI error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'EXTRACTION_FAILED', message: 'AI extraction failed. Please try again.' } });
+  }
+});
+
 // POST /api/portfolios/:id/linkedin-pdf — upload LinkedIn PDF, extract and store experience
 router.post('/:id/linkedin-pdf', authMiddleware, upload.single('pdf'), async (req, res) => {
   const { id: userId } = req.user;

@@ -376,12 +376,19 @@ function MediaInput({ repoName, value, onChange }) {
   )
 }
 
-function PortfolioBuilder({ onLogout, onGoToBrowse }) {
+function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
   // Data loading
   const [importedRepos, setImportedRepos] = useState([])
   const [analysisMap, setAnalysisMap]     = useState({})
+  const [repoStatusMap, setRepoStatusMap] = useState({})
   const [loading, setLoading]             = useState(true)
   const [loadError, setLoadError]         = useState(null)
+  const [cancelling, setCancelling]       = useState(false)
+  const [restarting, setRestarting]       = useState(null) // repoId being restarted
+  const [deletingRepo, setDeletingRepo]   = useState(null) // repoId confirm dialog
+  const [deleting, setDeleting]           = useState(null) // repoId being deleted
+  const [elapsedSec, setElapsedSec]       = useState(0)
+  const elapsedRef = useRef(null)
 
   // Step 1 — form
   const [title, setTitle]       = useState('')
@@ -441,6 +448,70 @@ function PortfolioBuilder({ onLogout, onGoToBrowse }) {
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [])
 
+  // Auto-refresh every 5s while any repo analysis is still in progress
+  const analysisInProgress = importedRepos.some(r =>
+    ['queued', 'running', 'pending'].includes(repoStatusMap[r.id]?.status)
+  )
+  useEffect(() => {
+    if (!analysisInProgress) {
+      clearInterval(elapsedRef.current)
+      elapsedRef.current = null
+      setElapsedSec(0)
+      return
+    }
+    if (!elapsedRef.current) {
+      setElapsedSec(0)
+      elapsedRef.current = setInterval(() => setElapsedSec(s => s + 1), 1000)
+    }
+    const poll = setInterval(loadRepos, 5000)
+    return () => clearInterval(poll)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analysisInProgress])
+
+  async function handleCancelAnalysis() {
+    setCancelling(true)
+    await authFetch(`${BASE_URL}/api/deep-analysis/cancel-pending`, { method: 'POST' }, onLogout)
+    await loadRepos()
+    setCancelling(false)
+  }
+
+  async function handleRestartRepo(repositoryId) {
+    setRestarting(repositoryId)
+    await authFetch(`${BASE_URL}/api/deep-analysis/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ repositoryId }),
+    }, onLogout)
+    await loadRepos()
+    setRestarting(null)
+  }
+
+  async function handleDeleteRepo(repoId) {
+    setDeleting(repoId)
+    const res = await authFetch(`${BASE_URL}/api/repos/${repoId}`, { method: 'DELETE' }, onLogout)
+    setDeletingRepo(null)
+    setDeleting(null)
+    if (res?.ok && onRepoDeleted) {
+      const json = await res.json()
+      onRepoDeleted(repoId, json.deleted?.full_name)
+    }
+    await loadRepos()
+  }
+
+  async function handleRestartAll() {
+    setCancelling(true)
+    const stopped = importedRepos.filter(r => ['failed', 'cancelled'].includes(repoStatusMap[r.id]?.status))
+    await Promise.all(stopped.map(r =>
+      authFetch(`${BASE_URL}/api/deep-analysis/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repositoryId: r.id }),
+      }, onLogout)
+    ))
+    await loadRepos()
+    setCancelling(false)
+  }
+
   // Seed editable fields whenever AI narrative data arrives (generation or regeneration)
   useEffect(() => {
     if (narrativeData) {
@@ -476,16 +547,18 @@ function PortfolioBuilder({ onLogout, onGoToBrowse }) {
     const repos = json.data || []
     setImportedRepos(repos)
 
+    const newAnalysisMap = {}
+    const newStatusMap   = {}
     await Promise.all(repos.map(async repo => {
       const dRes = await authFetch(`${BASE_URL}/api/deep-analysis/${repo.id}/latest`, {}, onLogout)
       if (!dRes) return
       const dJson = await dRes.json()
-      if (dJson?.success && ['completed', 'partial'].includes(dJson.data.status)) {
+      if (dJson?.success) {
         const d = dJson.data
-        setAnalysisMap(prev => ({
-          ...prev,
-          [repo.id]: {
-            status:          dJson.data.status,
+        newStatusMap[repo.id] = { status: d.status }
+        if (['completed', 'partial'].includes(d.status)) {
+          newAnalysisMap[repo.id] = {
+            status:          d.status,
             confidenceScore: d.confidenceScore,
             technologies:    d.codeIntelligence?.technologies?.map(t => ({ name: t, category: 'Other', confidence: 1 })) || [],
             summary:         d.intelligence?.executiveSummary?.overview || null,
@@ -494,10 +567,14 @@ function PortfolioBuilder({ onLogout, onGoToBrowse }) {
               strengths: d.inference?.strengths?.[0] || null,
               use_cases: null,
             },
-          },
-        }))
+          }
+        }
+      } else {
+        newStatusMap[repo.id] = { status: 'pending' }
       }
     }))
+    setAnalysisMap(newAnalysisMap)
+    setRepoStatusMap(newStatusMap)
 
     setLoading(false)
   }
@@ -732,20 +809,21 @@ function PortfolioBuilder({ onLogout, onGoToBrowse }) {
 
   async function handleLinkedinUpload(e) {
     const file = e.target.files?.[0]
-    if (!file || !portfolio) return
+    if (!file) return
     setLinkedinUploading(true)
     setLinkedinError(null)
 
     const formData = new FormData()
     formData.append('pdf', file)
 
+    // Use the portfolio-attached endpoint if portfolio exists, otherwise the preview endpoint
+    const url = portfolio?.portfolioId
+      ? `${BASE_URL}/api/portfolios/${portfolio.portfolioId}/linkedin-pdf`
+      : `${BASE_URL}/api/portfolios/extract-linkedin`
+
     let res
     try {
-      res = await authFetch(
-        `${BASE_URL}/api/portfolios/${portfolio.portfolioId}/linkedin-pdf`,
-        { method: 'POST', body: formData },
-        onLogout
-      )
+      res = await authFetch(url, { method: 'POST', body: formData }, onLogout)
     } catch {
       setLinkedinError('Network error — is the backend running?')
       setLinkedinUploading(false)
@@ -759,12 +837,14 @@ function PortfolioBuilder({ onLogout, onGoToBrowse }) {
     const json = await res.json()
     if (json.success) {
       setLinkedinData(json.data)
-      // Auto-fill profile fields from LinkedIn data if they are empty
+      // Auto-fill all extractable profile fields (only if currently empty)
       setProfile(p => ({
         ...p,
-        fullName: p.fullName || json.data.name      || '',
-        headline: p.headline || json.data.headline  || '',
-        location: p.location || json.data.location  || '',
+        fullName:    p.fullName    || json.data.name      || '',
+        headline:    p.headline    || json.data.headline  || '',
+        location:    p.location    || json.data.location  || '',
+        email:       p.email       || json.data.email     || '',
+        linkedinUrl: p.linkedinUrl || json.data.linkedinUrl || '',
       }))
     } else {
       setLinkedinError(json.error?.message || 'Failed to process PDF.')
@@ -914,8 +994,109 @@ function PortfolioBuilder({ onLogout, onGoToBrowse }) {
           {/* Scrollable edit sections */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '20px 20px 12px' }}>
 
-            {/* 0. Personal Profile */}
-            <EditorSection number="0" title="Personal Profile" description="Your identity — shown at the top of your public portfolio">
+            {/* LinkedIn PDF Import — shown first so it auto-fills the profile below */}
+            <EditorSection number="1" title="Import from LinkedIn PDF" description="Auto-fills name, headline, location, email, skills, experience & education" defaultOpen={!linkedinData}>
+
+              {!linkedinData ? (
+                <div>
+                  <p style={{ margin: '0 0 6px', fontSize: '12px', color: '#6b7280', lineHeight: 1.6 }}>
+                    Go to your <strong>LinkedIn profile page</strong> → click <strong>More…</strong> (below your photo) → <strong>Save to PDF</strong>.
+                  </p>
+                  <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#9ca3af', lineHeight: 1.5 }}>
+                    Do not use Settings → Data Privacy export — that gives a ZIP file, not a PDF.
+                  </p>
+                  <input
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    id="linkedin-pdf-upload"
+                    style={{ display: 'none' }}
+                    onChange={handleLinkedinUpload}
+                    disabled={linkedinUploading}
+                  />
+                  <label
+                    htmlFor="linkedin-pdf-upload"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '7px',
+                      padding: '9px 18px', borderRadius: '8px',
+                      border: '1px solid #0a66c2', backgroundColor: linkedinUploading ? '#f1f5f9' : '#e8f0fd',
+                      color: '#0a66c2', fontSize: '13px', fontWeight: '700',
+                      cursor: linkedinUploading ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {linkedinUploading ? '⏳ Extracting…' : '🔗 Upload LinkedIn PDF'}
+                  </label>
+                  {linkedinError && (
+                    <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#dc2626' }}>{linkedinError}</p>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#166534' }}>
+                      ✓ LinkedIn profile imported — fields auto-filled below
+                    </span>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <input
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        id="linkedin-pdf-reupload"
+                        style={{ display: 'none' }}
+                        onChange={handleLinkedinUpload}
+                        disabled={linkedinUploading}
+                      />
+                      <label
+                        htmlFor="linkedin-pdf-reupload"
+                        style={{ fontSize: '11px', color: '#0a66c2', cursor: 'pointer', fontWeight: '600' }}
+                      >
+                        {linkedinUploading ? '⏳…' : '🔄 Re-upload'}
+                      </label>
+                      <button
+                        onClick={() => setLinkedinData(null)}
+                        style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '11px', cursor: 'pointer', padding: 0 }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                    {linkedinData.name && (
+                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#dcfce7', color: '#166534' }}>
+                        👤 {linkedinData.name}
+                      </span>
+                    )}
+                    {linkedinData.experience?.length > 0 && (
+                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#dbeafe', color: '#1e40af' }}>
+                        {linkedinData.experience.length} Experience {linkedinData.experience.length === 1 ? 'entry' : 'entries'}
+                      </span>
+                    )}
+                    {linkedinData.education?.length > 0 && (
+                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#fef3c7', color: '#92400e' }}>
+                        {linkedinData.education.length} Education {linkedinData.education.length === 1 ? 'entry' : 'entries'}
+                      </span>
+                    )}
+                    {linkedinData.skills?.length > 0 && (
+                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#f3e8ff', color: '#6b21a8' }}>
+                        {linkedinData.skills.length} Skills
+                      </span>
+                    )}
+                  </div>
+                  {linkedinData.experience?.slice(0, 3).map((exp, i) => (
+                    <div key={i} style={{ padding: '8px 12px', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', marginBottom: '6px' }}>
+                      <p style={{ margin: '0 0 1px', fontSize: '12px', fontWeight: '700', color: '#111827' }}>{exp.role}</p>
+                      <p style={{ margin: 0, fontSize: '11px', color: '#6b7280' }}>{exp.company} · {exp.startDate} – {exp.endDate}</p>
+                    </div>
+                  ))}
+                  {(linkedinData.experience?.length ?? 0) > 3 && (
+                    <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#9ca3af' }}>
+                      +{linkedinData.experience.length - 3} more entries visible on public portfolio
+                    </p>
+                  )}
+                </div>
+              )}
+            </EditorSection>
+
+            {/* 0. Personal Profile — auto-filled by LinkedIn above */}
+            <EditorSection number="2" title="Personal Profile" description="Your identity — shown at the top of your public portfolio">
 
               {/* Profile photo upload */}
               <div style={{ marginBottom: '14px' }}>
@@ -999,90 +1180,8 @@ function PortfolioBuilder({ onLogout, onGoToBrowse }) {
               ))}
             </EditorSection>
 
-            {/* LinkedIn PDF Import */}
-            <EditorSection number="↑" title="Import from LinkedIn PDF" description="Upload your LinkedIn profile export to auto-fill Experience & Education" defaultOpen={!linkedinData}>
-
-              {!linkedinData ? (
-                <div>
-                  <p style={{ margin: '0 0 6px', fontSize: '12px', color: '#6b7280', lineHeight: 1.6 }}>
-                    Go to your <strong>LinkedIn profile page</strong> → click <strong>More…</strong> (below your photo) → <strong>Save to PDF</strong>.
-                  </p>
-                  <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#9ca3af', lineHeight: 1.5 }}>
-                    Do not use Settings → Data Privacy export — that gives a ZIP file, not a PDF.
-                  </p>
-                  <input
-                    type="file"
-                    accept=".pdf,application/pdf"
-                    id="linkedin-pdf-upload"
-                    style={{ display: 'none' }}
-                    onChange={handleLinkedinUpload}
-                    disabled={linkedinUploading}
-                  />
-                  <label
-                    htmlFor="linkedin-pdf-upload"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '7px',
-                      padding: '9px 18px', borderRadius: '8px',
-                      border: '1px solid #0a66c2', backgroundColor: linkedinUploading ? '#f1f5f9' : '#e8f0fd',
-                      color: '#0a66c2', fontSize: '13px', fontWeight: '700',
-                      cursor: linkedinUploading ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    {linkedinUploading ? '⏳ Extracting…' : '🔗 Upload LinkedIn PDF'}
-                  </label>
-                  {linkedinError && (
-                    <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#dc2626' }}>{linkedinError}</p>
-                  )}
-                </div>
-              ) : (
-                <div>
-                  {/* Summary of what was extracted */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#166534' }}>
-                      ✓ LinkedIn profile imported
-                    </span>
-                    <button
-                      onClick={() => setLinkedinData(null)}
-                      style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '11px', cursor: 'pointer', padding: 0 }}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                    {linkedinData.experience?.length > 0 && (
-                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#dbeafe', color: '#1e40af' }}>
-                        {linkedinData.experience.length} Experience {linkedinData.experience.length === 1 ? 'entry' : 'entries'}
-                      </span>
-                    )}
-                    {linkedinData.education?.length > 0 && (
-                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#dcfce7', color: '#166534' }}>
-                        {linkedinData.education.length} Education {linkedinData.education.length === 1 ? 'entry' : 'entries'}
-                      </span>
-                    )}
-                    {linkedinData.skills?.length > 0 && (
-                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#f3e8ff', color: '#6b21a8' }}>
-                        {linkedinData.skills.length} Skills
-                      </span>
-                    )}
-                  </div>
-                  {/* Experience preview */}
-                  {linkedinData.experience?.slice(0, 3).map((exp, i) => (
-                    <div key={i} style={{ padding: '8px 12px', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', marginBottom: '6px' }}>
-                      <p style={{ margin: '0 0 1px', fontSize: '12px', fontWeight: '700', color: '#111827' }}>{exp.role}</p>
-                      <p style={{ margin: 0, fontSize: '11px', color: '#6b7280' }}>{exp.company} · {exp.startDate} – {exp.endDate}</p>
-                    </div>
-                  ))}
-                  {(linkedinData.experience?.length ?? 0) > 3 && (
-                    <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#9ca3af' }}>
-                      +{linkedinData.experience.length - 3} more entries in public portfolio
-                    </p>
-                  )}
-                </div>
-              )}
-            </EditorSection>
-
-            {/* 1. Headline */}
-            <EditorSection number="1" title="Headline" description="Your professional headline used in the AI-generated narrative">
+            {/* 3. Headline */}
+            <EditorSection number="3" title="Headline" description="Your professional headline used in the AI-generated narrative">
               <input
                 type="text"
                 value={editedHeadline}
@@ -1102,7 +1201,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse }) {
             </EditorSection>
 
             {/* 2. Professional Summary */}
-            <EditorSection number="2" title="Professional Summary" description="Tell recruiters who you are and what you bring to the table">
+            <EditorSection number="4" title="Professional Summary" description="Tell recruiters who you are and what you bring to the table">
               <textarea
                 value={editedNarrative}
                 onChange={e => setEditedNarrative(e.target.value)}
@@ -1123,7 +1222,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse }) {
 
             {/* 3. Top Skills */}
             {narrativeData.top_skills?.length > 0 && (
-              <EditorSection number="3" title="Top Skills" description="AI-extracted from your repositories — shown as chips on your portfolio">
+              <EditorSection number="5" title="Top Skills" description="AI-extracted from your repositories — shown as chips on your portfolio">
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px' }}>
                   {narrativeData.top_skills.map((skill, i) => {
                     const s = techChipStyle(skill.category)
@@ -1144,7 +1243,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse }) {
 
             {/* 4. Project Summaries */}
             {editedProjects.length > 0 && (
-              <EditorSection number="4" title="Project Summaries" description="Edit the one-liner shown on each project card. Generate AI descriptions for detailed project breakdowns.">
+              <EditorSection number="6" title="Project Summaries" description="Edit the one-liner shown on each project card. Generate AI descriptions for detailed project breakdowns.">
                 <div style={{ marginBottom: '14px' }}>
                   <button
                     onClick={handleGenerateDescriptions}
@@ -1220,7 +1319,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse }) {
             )}
 
             {/* 5. Project Media */}
-            <EditorSection number="5" title="Project Media" description="Paste a GitHub file URL — auto-converted to a displayable media URL" defaultOpen={false}>
+            <EditorSection number="7" title="Project Media" description="Paste a GitHub file URL — auto-converted to a displayable media URL" defaultOpen={false}>
               <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#6b7280', lineHeight: 1.6 }}>
                 Paste a GitHub file URL. Repo2Reputation will automatically convert it into a displayable media URL.
               </p>
@@ -1434,25 +1533,170 @@ function PortfolioBuilder({ onLogout, onGoToBrowse }) {
             </>
           ) : (
             <>
-              <p style={{ color: '#6b7280', fontSize: '14px', margin: 0 }}>
-                <strong>{importedRepos.length} {importedRepos.length === 1 ? 'repository' : 'repositories'} imported</strong> — analysis is running in the background. This usually takes 1–2 minutes.
-              </p>
-              <button
-                onClick={loadRepos}
-                style={{
-                  alignSelf: 'flex-start',
-                  padding: '6px 14px',
-                  borderRadius: '8px',
-                  border: '1px solid #d1d5db',
-                  background: '#fff',
-                  color: '#374151',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                ↻ Refresh
-              </button>
+              {(() => {
+                const allStopped = importedRepos.every(r =>
+                  ['failed', 'cancelled'].includes(repoStatusMap[r.id]?.status)
+                )
+                const hasStopped = importedRepos.some(r =>
+                  ['failed', 'cancelled'].includes(repoStatusMap[r.id]?.status)
+                )
+                return (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <p style={{ color: '#374151', fontSize: '14px', margin: 0, fontWeight: '600' }}>
+                        {allStopped
+                          ? 'Analysis stopped'
+                          : `Analyzing ${importedRepos.length} ${importedRepos.length === 1 ? 'repository' : 'repositories'}…`}
+                      </p>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        {analysisInProgress && (
+                          <button
+                            onClick={handleCancelAnalysis}
+                            disabled={cancelling}
+                            style={{
+                              padding: '5px 12px', borderRadius: '7px',
+                              border: '1px solid #fca5a5', background: '#fff1f2',
+                              color: '#dc2626', fontSize: '12px', fontWeight: '600',
+                              cursor: cancelling ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            {cancelling ? 'Stopping…' : '⏹ Stop'}
+                          </button>
+                        )}
+                        {hasStopped && !analysisInProgress && (
+                          <button
+                            onClick={handleRestartAll}
+                            disabled={cancelling}
+                            style={{
+                              padding: '5px 12px', borderRadius: '7px',
+                              border: '1px solid #a5b4fc', background: '#eef2ff',
+                              color: '#4f46e5', fontSize: '12px', fontWeight: '600',
+                              cursor: cancelling ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            {cancelling ? 'Restarting…' : '▶ Restart All'}
+                          </button>
+                        )}
+                        {onGoToBrowse && !analysisInProgress && (
+                          <button
+                            onClick={onGoToBrowse}
+                            style={{
+                              padding: '5px 12px', borderRadius: '7px',
+                              border: '1px solid #d1d5db', background: '#fff',
+                              color: '#374151', fontSize: '12px', fontWeight: '600', cursor: 'pointer',
+                            }}
+                          >
+                            ← Change repos
+                          </button>
+                        )}
+                        {!analysisInProgress && (
+                          <button
+                            onClick={loadRepos}
+                            style={{
+                              padding: '5px 12px', borderRadius: '7px',
+                              border: '1px solid #d1d5db', background: '#fff',
+                              color: '#374151', fontSize: '12px', fontWeight: '600', cursor: 'pointer',
+                            }}
+                          >
+                            ↻ Refresh
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {analysisInProgress && (
+                      <p style={{ color: elapsedSec > 120 ? '#d97706' : '#9ca3af', fontSize: '12px', margin: '0 0 14px' }}>
+                        {elapsedSec > 120
+                          ? `⚠️ Taking longer than usual (${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s) — large repos can take up to 5 minutes. You can stop and retry.`
+                          : `Running for ${elapsedSec}s — auto-refreshing every 5s. Usually takes 1–2 minutes per repo.`}
+                      </p>
+                    )}
+                    {!analysisInProgress && (
+                      <p style={{ color: '#9ca3af', fontSize: '12px', margin: '0 0 14px' }}>
+                        You can restart stopped repos individually or all at once.
+                      </p>
+                    )}
+                  </>
+                )
+              })()}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {importedRepos.map(repo => {
+                  const st = repoStatusMap[repo.id]?.status || 'pending'
+                  const isDone = ['completed', 'partial'].includes(st)
+                  const isFailed = ['failed', 'cancelled'].includes(st)
+                  return (
+                    <div key={repo.id} style={{
+                      display: 'flex', alignItems: 'center', gap: '12px',
+                      padding: '11px 14px', borderRadius: '10px',
+                      border: `1px solid ${isDone ? '#86efac' : isFailed ? '#fca5a5' : '#e5e7eb'}`,
+                      backgroundColor: isDone ? '#f0fdf4' : isFailed ? '#fff1f2' : '#fafafa',
+                    }}>
+                      <div style={{ width: '20px', flexShrink: 0, textAlign: 'center', fontSize: '14px' }}>
+                        {isDone ? '✓' : isFailed ? '✗' : (
+                          <span style={{
+                            display: 'inline-block', width: '14px', height: '14px',
+                            border: '2px solid #d1d5db', borderTopColor: '#4f46e5',
+                            borderRadius: '50%', animation: 'spin 0.8s linear infinite',
+                            verticalAlign: 'middle',
+                          }} />
+                        )}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <p style={{ margin: 0, fontWeight: '600', fontSize: '13px', color: '#111827' }}>{repo.name}</p>
+                        {repo.description && (
+                          <p style={{ margin: '1px 0 0', fontSize: '11px', color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {repo.description}
+                          </p>
+                        )}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                        {isFailed && (
+                          <button
+                            onClick={() => handleRestartRepo(repo.id)}
+                            disabled={restarting === repo.id}
+                            style={{
+                              padding: '2px 9px', borderRadius: '8px',
+                              border: '1px solid #a5b4fc', background: '#eef2ff',
+                              color: '#4f46e5', fontSize: '11px', fontWeight: '600',
+                              cursor: restarting === repo.id ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            {restarting === repo.id ? '…' : '↺ Retry'}
+                          </button>
+                        )}
+                        <span style={{
+                          fontSize: '11px', fontWeight: '600', padding: '2px 9px', borderRadius: '10px',
+                          backgroundColor: isDone ? '#dcfce7' : isFailed ? '#fee2e2' : '#eff6ff',
+                          color: isDone ? '#166534' : isFailed ? '#991b1b' : '#1d4ed8',
+                          border: `1px solid ${isDone ? '#86efac' : isFailed ? '#fca5a5' : '#bfdbfe'}`,
+                        }}>
+                          {isDone ? '✓ Analyzed' : isFailed ? (st === 'cancelled' ? 'Stopped' : 'Failed') : st === 'running' ? 'Analyzing…' : 'Queued'}
+                        </span>
+                        {deletingRepo === repo.id ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ fontSize: '11px', color: '#dc2626', fontWeight: '600' }}>Remove?</span>
+                            <button
+                              onClick={() => handleDeleteRepo(repo.id)}
+                              disabled={deleting === repo.id}
+                              style={{ padding: '2px 8px', borderRadius: '6px', background: '#dc2626', border: 'none', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                            >{deleting === repo.id ? '…' : 'Yes'}</button>
+                            <button
+                              onClick={() => setDeletingRepo(null)}
+                              style={{ padding: '2px 8px', borderRadius: '6px', background: '#fff', border: '1px solid #d1d5db', color: '#374151', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                            >No</button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setDeletingRepo(repo.id)}
+                            style={{ background: 'none', border: 'none', color: '#d1d5db', fontSize: '15px', cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}
+                            title="Remove this repo"
+                          >×</button>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
             </>
           )}
         </div>
@@ -1509,9 +1753,31 @@ function PortfolioBuilder({ onLogout, onGoToBrowse }) {
                         </p>
                       )}
                     </div>
-                    <span style={{ flexShrink: 0, fontSize: '11px', fontWeight: 'bold', padding: '2px 8px', borderRadius: '10px', backgroundColor: '#dcfce7', color: '#166534', border: '1px solid #86efac' }}>
-                      ✓ Analyzed
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                      <span style={{ fontSize: '11px', fontWeight: 'bold', padding: '2px 8px', borderRadius: '10px', backgroundColor: '#dcfce7', color: '#166534', border: '1px solid #86efac' }}>
+                        ✓ Analyzed
+                      </span>
+                      {deletingRepo === repo.id ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <span style={{ fontSize: '11px', color: '#dc2626', fontWeight: '600' }}>Remove?</span>
+                          <button
+                            onClick={() => handleDeleteRepo(repo.id)}
+                            disabled={deleting === repo.id}
+                            style={{ padding: '2px 8px', borderRadius: '6px', background: '#dc2626', border: 'none', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                          >{deleting === repo.id ? '…' : 'Yes'}</button>
+                          <button
+                            onClick={() => setDeletingRepo(null)}
+                            style={{ padding: '2px 8px', borderRadius: '6px', background: '#fff', border: '1px solid #d1d5db', color: '#374151', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                          >No</button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setDeletingRepo(repo.id)}
+                          style={{ background: 'none', border: 'none', color: '#d1d5db', fontSize: '15px', cursor: 'pointer', lineHeight: 1, padding: '0 2px' }}
+                          title="Remove this repo from portfolio"
+                        >×</button>
+                      )}
+                    </div>
                   </div>
                 )
               })}

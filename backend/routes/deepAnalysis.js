@@ -176,6 +176,25 @@ router.post('/run', authMiddleware, async (req, res) => {
   }
 });
 
+// ── POST /api/deep-analysis/cancel-pending ───────────────────────────────────
+// Mark all queued/running deep analyses for the current user as cancelled.
+router.post('/cancel-pending', authMiddleware, async (req, res) => {
+  const { id: userId } = req.user;
+  try {
+    const result = await pool.query(
+      `UPDATE deep_analyses SET status = 'cancelled', completed_at = NOW()
+       WHERE status IN ('queued', 'running')
+       AND repository_id IN (SELECT id FROM repositories WHERE user_id = $1)
+       RETURNING id`,
+      [userId]
+    );
+    return res.json({ success: true, data: { cancelled: result.rows.length } });
+  } catch (err) {
+    console.error('[deepAnalysis] cancel-pending error:', err.message);
+    return res.status(500).json({ success: false });
+  }
+});
+
 // ── POST /api/deep-analysis/:repoId/reanalyze ────────────────────────────────
 // Triggers a fresh analysis run for a repository.
 // ALWAYS creates a new deep_analyses record — never overwrites history.

@@ -351,7 +351,9 @@ Return ONLY valid JSON with this exact structure:
 {
   "name": "Full name or null",
   "headline": "Professional headline or null",
-  "location": "Location or null",
+  "location": "City, Country or null",
+  "email": "Email address if present in the text or null",
+  "linkedinUrl": "LinkedIn profile URL if present or null",
   "summary": "About/summary section text or null",
   "experience": [
     {

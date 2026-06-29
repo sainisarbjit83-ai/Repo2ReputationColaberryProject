@@ -79,23 +79,60 @@ function Header({ onLogout }) {
     () => localStorage.getItem('r2r_onboarding_dismissed') !== 'true'
   )
   const [removeConfirm, setRemoveConfirm]       = useState(null)
-  const [connectedAccounts, setConnectedAccounts] = useState([])
-  const [connectBanner, setConnectBanner]         = useState(null)
+  const [connectedAccounts, setConnectedAccounts]     = useState([])
+  const [appInstallations, setAppInstallations]       = useState([])
+  const [connectBanner, setConnectBanner]             = useState(null)
+  const [analyzingFullNames, setAnalyzingFullNames]   = useState(new Set())
 
   useEffect(() => {
     fetchRepos()
     fetchImportedRepos()
     fetchCurrentUser()
     fetchConnectedAccounts()
+    fetchAppInstallations()
 
-    // Handle return from GitHub OAuth account-connect flow (?connected=username in URL)
     const params = new URLSearchParams(window.location.search)
     const justConnected = params.get('connected')
+    const justInstalled = params.get('installed')
     if (justConnected) {
-      setConnectBanner(justConnected)
+      setConnectBanner(`@${justConnected} connected — private repositories are now accessible`)
+      window.history.replaceState({}, '', '/')
+    } else if (justInstalled) {
+      setConnectBanner(`@${justInstalled} connected via GitHub App — public and private repositories are now accessible`)
       window.history.replaceState({}, '', '/')
     }
   }, [])
+
+  // Poll analysis status for repos still showing "Analyzing..." badge — clear when done
+  useEffect(() => {
+    if (analyzingFullNames.size === 0) return
+    const interval = setInterval(async () => {
+      const token = localStorage.getItem('token')
+      if (!token) return
+      const done = new Set()
+      await Promise.all([...analyzingFullNames].map(async fullName => {
+        const repo = importedRepos.find(r => r.full_name === fullName)
+        if (!repo) { done.add(fullName); return }
+        try {
+          const res = await fetch(`${BASE_URL}/api/deep-analysis/${repo.id}/latest`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          const json = await res.json()
+          if (json?.data?.status && ['completed', 'partial', 'failed', 'cancelled'].includes(json.data.status)) {
+            done.add(fullName)
+          }
+        } catch { /* network blip — try again next tick */ }
+      }))
+      if (done.size > 0) {
+        setAnalyzingFullNames(prev => {
+          const next = new Set(prev)
+          done.forEach(n => next.delete(n))
+          return next
+        })
+      }
+    }, 8000)
+    return () => clearInterval(interval)
+  }, [analyzingFullNames, importedRepos])
 
   // ── Derived ───────────────────────────────────────────────────────────────────
 
@@ -107,15 +144,25 @@ function Header({ onLogout }) {
     return acc
   }, {})
 
+  const connectedUsernames = new Set([
+    ...(githubUsername ? [githubUsername.toLowerCase()] : []),
+    ...connectedAccounts.map(a => a.github_username.toLowerCase()),
+    ...appInstallations.map(i => i.account_login.toLowerCase()),
+  ])
+
   const allAccounts = [
     ...(githubUsername ? [{ username: githubUsername, isPrimary: true, isConnected: true, hasPrivateAccess: true }] : []),
-    // Secondary accounts connected via OAuth — include private repos
+    // Secondary OAuth accounts
     ...connectedAccounts
       .filter(a => !a.is_primary)
-      .map(a => ({ username: a.github_username, isPrimary: false, isConnected: true, hasPrivateAccess: true, accountId: a.id })),
-    // Public-only extra usernames — skip if already connected via OAuth
+      .map(a => ({ username: a.github_username, isPrimary: false, isConnected: true, hasPrivateAccess: true, accountId: a.id, source: 'oauth' })),
+    // GitHub App installations
+    ...appInstallations
+      .filter(i => !connectedAccounts.some(a => a.github_username.toLowerCase() === i.account_login.toLowerCase()))
+      .map(i => ({ username: i.account_login, isPrimary: false, isConnected: true, hasPrivateAccess: true, installationId: i.id, source: 'app' })),
+    // Public-only extra usernames — skip any already connected
     ...extraUsernames
-      .filter(u => !connectedAccounts.some(a => a.github_username.toLowerCase() === u.toLowerCase()))
+      .filter(u => !connectedUsernames.has(u.toLowerCase()))
       .map(u => ({ username: u, isPrimary: false, isConnected: false, hasPrivateAccess: false })),
   ]
 
@@ -171,6 +218,18 @@ function Header({ onLogout }) {
     if (!res) return
     const json = await res.json()
     if (json.success) setConnectedAccounts(json.data || [])
+  }
+
+  async function fetchAppInstallations() {
+    const res = await authFetch(`${BASE_URL}/api/github-app/installations`, {}, onLogout)
+    if (!res) return
+    const json = await res.json()
+    if (json.success) setAppInstallations(json.data || [])
+  }
+
+  async function handleStopAnalysis() {
+    await authFetch(`${BASE_URL}/api/deep-analysis/cancel-pending`, { method: 'POST' }, onLogout)
+    setAnalyzingFullNames(new Set())
   }
 
   function connectGithubAccount() {
@@ -267,6 +326,10 @@ function Header({ onLogout }) {
     if (json.success) {
       const succeeded = json.data.results.filter(r => r.status === 'succeeded').length
       const failed    = json.data.results.filter(r => r.status === 'failed').length
+      const importedNames = new Set(
+        json.data.results.filter(r => r.status === 'succeeded').map(r => r.fullName)
+      )
+      setAnalyzingFullNames(importedNames)
       setSelected(new Set())
       fetchImportedRepos()
       if (failed > 0) {
@@ -314,6 +377,12 @@ function Header({ onLogout }) {
               <span className="text-sm font-semibold text-gray-700">@{githubUsername}</span>
             </div>
           )}
+          <a
+            href="/settings"
+            className="px-5 py-2 rounded-full border border-gray-200 bg-white hover:bg-gray-50 transition font-semibold text-sm"
+          >
+            Settings
+          </a>
           <button
             onClick={onLogout}
             className="px-5 py-2 rounded-full border border-gray-200 bg-white hover:bg-gray-50 transition font-semibold text-sm"
@@ -398,10 +467,33 @@ function Header({ onLogout }) {
               </div>
             )}
 
+            {/* Analysis-in-progress banner */}
+            {analyzingFullNames.size > 0 && (
+              <div className="flex items-center justify-between mb-4 px-4 py-2.5 rounded-xl border border-blue-200 bg-blue-50">
+                <span className="text-sm text-blue-700 font-medium">
+                  ⏳ Analyzing {analyzingFullNames.size} {analyzingFullNames.size === 1 ? 'repo' : 'repos'} in the background…
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleTabSwitch('portfolio')}
+                    className="px-3 py-1.5 rounded-lg border border-blue-300 bg-white text-blue-700 text-xs font-semibold hover:bg-blue-50 transition"
+                  >
+                    View progress →
+                  </button>
+                  <button
+                    onClick={handleStopAnalysis}
+                    className="px-3 py-1.5 rounded-lg border border-red-200 bg-white text-red-600 text-xs font-semibold hover:bg-red-50 transition"
+                  >
+                    ⏹ Stop
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Connect-success banner */}
             {connectBanner && (
               <div className="flex items-center justify-between mb-4 px-4 py-3 rounded-xl border border-green-200 bg-green-50 text-green-700 text-sm font-medium">
-                <span>✓ @{connectBanner} connected — private repositories are now accessible</span>
+                <span>✓ {connectBanner}</span>
                 <button onClick={() => setConnectBanner(null)} className="text-green-500 hover:text-green-700 text-lg leading-none ml-4">×</button>
               </div>
             )}
@@ -492,10 +584,16 @@ function Header({ onLogout }) {
                             <div className="flex items-center gap-1.5">
                               <span className="text-xs text-red-600 font-medium whitespace-nowrap">Remove?</span>
                               <button
-                                onClick={() => acc.isConnected
-                                  ? disconnectGithubAccount(acc.accountId, acc.username)
-                                  : removeExtraUsername(acc.username)
-                                }
+                                onClick={() => {
+                                  if (acc.source === 'app') {
+                                    authFetch(`${BASE_URL}/api/github-app/installations/${acc.installationId}`, { method: 'DELETE' }, onLogout)
+                                      .then(() => { setAppInstallations(prev => prev.filter(i => i.id !== acc.installationId)); fetchRepos() })
+                                  } else if (acc.isConnected) {
+                                    disconnectGithubAccount(acc.accountId, acc.username)
+                                  } else {
+                                    removeExtraUsername(acc.username)
+                                  }
+                                }}
                                 className="px-2 py-1 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-semibold transition"
                               >Yes</button>
                               <button
@@ -518,20 +616,10 @@ function Header({ onLogout }) {
                   )
                 })}
 
-                {/* Add accounts — connect (OAuth) or add public username */}
+                {/* Add accounts */}
                 <div className="flex flex-col justify-center gap-2">
-                  {/* Connect via OAuth — gets private repos */}
-                  <button
-                    onClick={connectGithubAccount}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl border border-dashed border-green-400 bg-green-50 hover:bg-green-100 text-green-700 text-xs font-semibold transition w-52"
-                  >
-                    <span>🔗</span>
-                    <span>Connect GitHub Account</span>
-                  </button>
-                  <p className="text-xs text-green-600 pl-1">OAuth login — includes private repos</p>
-
                   {/* Add public username — no auth */}
-                  <div className="flex items-center gap-1.5 mt-1">
+                  <div className="flex items-center gap-1.5">
                     <input
                       type="text"
                       placeholder="+ Add Public Username"
@@ -707,6 +795,15 @@ function Header({ onLogout }) {
                                 ✓ Imported
                               </span>
                             )}
+                            {isImported && analyzingFullNames.has(repo.fullName) && (
+                              <button
+                                onClick={e => { e.stopPropagation(); handleTabSwitch('portfolio') }}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 text-xs font-semibold border border-blue-200 whitespace-nowrap hover:bg-blue-100 transition cursor-pointer"
+                                title="Click to see analysis progress"
+                              >
+                                ⏳ Analyzing… (click to track)
+                              </button>
+                            )}
                           </div>
 
                           {/* Description */}
@@ -810,6 +907,10 @@ function Header({ onLogout }) {
           <PortfolioBuilder
             onLogout={onLogout}
             onGoToBrowse={() => handleTabSwitch('browse')}
+            onRepoDeleted={(repoId, fullName) => {
+              setImportedRepos(prev => prev.filter(r => r.id !== repoId))
+              if (fullName) setAnalyzingFullNames(prev => { const n = new Set(prev); n.delete(fullName); return n })
+            }}
           />
         )}
 

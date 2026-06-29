@@ -3,8 +3,9 @@ const axios = require('axios');
 const pool = require('../db/postgres');
 const authMiddleware = require('../middleware/authMiddleware');
 const { generateReadme } = require('../services/openai');
-const { queueAnalysis }     = require('../services/analysisQueue');
-const { queueDeepAnalysis } = require('../services/deepAnalysisQueue');
+const { queueAnalysis }        = require('../services/analysisQueue');
+const { queueDeepAnalysis }    = require('../services/deepAnalysisQueue');
+const { getInstallationRepos, getInstallationToken } = require('../services/githubApp');
 
 const router = express.Router();
 
@@ -37,6 +38,30 @@ async function getGithubAccounts(userId) {
     [userId]
   );
   return result.rows;
+}
+
+async function getAppInstallations(userId) {
+  const result = await pool.query(
+    'SELECT installation_id, account_login FROM github_app_installations WHERE user_id = $1',
+    [userId]
+  );
+  return result.rows;
+}
+
+// Resolve the best token to use when importing a repo owned by `owner`
+async function getTokenForOwner(userId, owner) {
+  const accounts = await getGithubAccounts(userId);
+  const oauthMatch = accounts.find(a => a.github_username.toLowerCase() === owner.toLowerCase());
+  if (oauthMatch) return oauthMatch.access_token;
+
+  const installations = await getAppInstallations(userId);
+  const appMatch = installations.find(i => i.account_login.toLowerCase() === owner.toLowerCase());
+  if (appMatch) {
+    try { return await getInstallationToken(appMatch.installation_id); } catch { /* fall through */ }
+  }
+
+  const primary = accounts.find(a => a.is_primary) || accounts[0];
+  return primary?.access_token || null;
 }
 
 async function fetchReadme(owner, repo, userToken) {
@@ -120,6 +145,24 @@ router.get('/', authMiddleware, async (req, res) => {
     );
     const secondaryRepos = secondaryResults.flat();
 
+    // GitHub App installations — skip accounts already covered by OAuth
+    const installations = await getAppInstallations(id);
+    const installationResults = await Promise.all(
+      installations
+        .filter(i => !connectedUsernames.has(i.account_login.toLowerCase()))
+        .map(async (inst) => {
+          try {
+            const repos = await getInstallationRepos(inst.installation_id);
+            return repos.map(r => mapGithubRepo(r, inst.account_login));
+          } catch (err) {
+            console.error(`[repos] GitHub App installation ${inst.installation_id} fetch failed:`, err.message);
+            return [];
+          }
+        })
+    );
+    const installationRepos = installationResults.flat();
+    installations.forEach(i => connectedUsernames.add(i.account_login.toLowerCase()));
+
     // Extra public usernames — skip any already connected via OAuth (avoids duplicates)
     const extraResults = await Promise.all(
       extraUsernames
@@ -143,7 +186,7 @@ router.get('/', authMiddleware, async (req, res) => {
     const extraErrors = extraResults.filter(r => r && r.error);
     const extraRepos  = extraResults.filter(Array.isArray).flat();
 
-    const repos = [...primaryRepos, ...secondaryRepos, ...extraRepos]
+    const repos = [...primaryRepos, ...secondaryRepos, ...installationRepos, ...extraRepos]
       .sort((a, b) => new Date(b.repoUpdatedAt) - new Date(a.repoUpdatedAt));
 
     return res.status(200).json({
@@ -228,12 +271,8 @@ router.post('/import', authMiddleware, async (req, res) => {
     }
     const [owner, repoName] = parts;
 
-    // Pick the account whose username matches the repo owner; fall back to primary
-    const matchingAccount =
-      accounts.find(a => a.github_username.toLowerCase() === owner.toLowerCase()) ||
-      accounts.find(a => a.is_primary) ||
-      accounts[0];
-    const ghInfo = { github_access_token: matchingAccount?.access_token };
+    const accessToken = await getTokenForOwner(userId, owner);
+    const ghInfo = { github_access_token: accessToken };
 
     // Create import job record (repository_id linked after successful fetch)
     let jobId;
@@ -410,6 +449,25 @@ router.get('/import/:jobId', authMiddleware, async (req, res) => {
 });
 
 // POST /api/repos/:repositoryId/generate-readme — generate a README draft from analysis data
+// DELETE /api/repos/:repositoryId — remove an imported repo and all its analysis data
+router.delete('/:repositoryId', authMiddleware, async (req, res) => {
+  const { id: userId } = req.user;
+  const { repositoryId } = req.params;
+  try {
+    const result = await pool.query(
+      'DELETE FROM repositories WHERE id = $1 AND user_id = $2 RETURNING id, full_name',
+      [repositoryId, userId]
+    );
+    if (!result.rows[0]) {
+      return res.status(404).json({ success: false, error: 'Repository not found.' });
+    }
+    return res.json({ success: true, deleted: result.rows[0] });
+  } catch (err) {
+    console.error('[repos] delete error:', err.message);
+    return res.status(500).json({ success: false, error: 'Failed to delete repository.' });
+  }
+});
+
 router.post('/:repositoryId/generate-readme', authMiddleware, async (req, res) => {
   const { id: userId } = req.user;
   const { repositoryId } = req.params;
