@@ -98,7 +98,7 @@ The AI analysis pipeline inspects each repository and surfaces:
 
 A structured editor that lets developers review and refine AI-generated content:
 
-- **LinkedIn PDF auto-fill** — Step 1: upload your LinkedIn PDF to auto-fill name, headline, location, email, skills, experience, and education
+- **LinkedIn PDF auto-fill** — Step 1: upload your LinkedIn PDF to auto-fill name, headline, location, email, experience, and education; extracted skills are automatically merged into the Top Skills section
 - **Headline generation** — professional title derived from repository signals
 - **About Me narrative** — first-person summary written from capability signals, not project names
 - **Project descriptions** — 2–4 paragraph project overviews drawn from deep analysis data
