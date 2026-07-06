@@ -76,14 +76,12 @@ This creates a more accurate and recruiter-friendly representation of a develope
 
 ![End-to-end Demo](docs/images/demo.gif)
 
-> [Watch Full Demo Video](docs/media/demo.mp4)
-
 **End-to-end flow:**
 GitHub Import → Background Analysis → Portfolio Builder → LinkedIn PDF Auto-fill → Published Portfolio → PDF Resume
 
 ---
 
-## Product Screenshots
+## Product Features
 
 ### Repository Analysis
 
@@ -188,12 +186,11 @@ Two separate GPT calls produce the final portfolio content:
 
 Repo2Reputation supports connecting multiple GitHub accounts — personal accounts, organizations, and accounts with private repositories.
 
-### How It Works
-
 **Primary account** — signed in via GitHub OAuth. All public and private repos are accessible.
 
 **Additional accounts** — install the Repo2Reputation GitHub App on any account you own. The App grants read access to all repos on that account (public and private) without OAuth session conflicts.
 
+**Install flow:**
 ```
 Settings → "Install GitHub App on Another Account"
         ↓
@@ -389,6 +386,9 @@ Create a `.env` file in `backend/`:
 # Database
 DATABASE_URL=postgres://user:password@localhost:5432/repo2reputation
 
+# Server
+PORT=5000
+
 # Auth
 JWT_SECRET=your_jwt_secret
 
@@ -404,7 +404,7 @@ GITHUB_APP_PRIVATE_KEY_BASE64=<base64-encoded contents of the .pem file>
 # OpenAI
 OPENAI_API_KEY=sk-...
 
-# URLs
+# URLs (used for OAuth redirects and CORS)
 FRONTEND_URL=http://localhost:5173
 ```
 
