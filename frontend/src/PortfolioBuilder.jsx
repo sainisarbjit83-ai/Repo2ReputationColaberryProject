@@ -30,10 +30,10 @@ function SectionCard({ title, children }) {
 }
 
 // ─── Collapsible editor section ──────────────────────────────────────────────
-function EditorSection({ number, title, description, defaultOpen = true, children }) {
+function EditorSection({ number, title, description, defaultOpen = true, children, id }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <div style={{
+    <div id={id} style={{
       marginBottom: '12px',
       border: '1px solid #e5e7eb',
       borderRadius: '12px',
@@ -389,7 +389,27 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
   const [deletingRepo, setDeletingRepo]   = useState(null) // repoId confirm dialog
   const [deleting, setDeleting]           = useState(null) // repoId being deleted
   const [elapsedSec, setElapsedSec]       = useState(0)
-  const elapsedRef = useRef(null)
+  const elapsedRef        = useRef(null)
+  const scrollContainerRef = useRef(null)
+
+  const EDITOR_NAV = [
+    { id: 'pb-section-1', label: 'LinkedIn' },
+    { id: 'pb-section-2', label: 'Profile' },
+    { id: 'pb-section-3', label: 'Headline' },
+    { id: 'pb-section-4', label: 'Summary' },
+    { id: 'pb-section-5', label: 'Skills' },
+    { id: 'pb-section-6', label: 'Projects' },
+    { id: 'pb-section-7', label: 'Media' },
+  ]
+
+  function scrollToSection(sectionId) {
+    const container = scrollContainerRef.current
+    const section   = document.getElementById(sectionId)
+    if (!container || !section) return
+    const containerRect = container.getBoundingClientRect()
+    const sectionRect   = section.getBoundingClientRect()
+    container.scrollTo({ top: container.scrollTop + sectionRect.top - containerRect.top - 8, behavior: 'smooth' })
+  }
 
   // Step 1 — form
   const [title, setTitle]       = useState('')
@@ -1000,11 +1020,44 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
             </span>
           </div>
 
+          {/* Section jump nav */}
+          <div style={{
+            display: 'flex', overflowX: 'auto', flexShrink: 0,
+            borderBottom: '1px solid #e5e7eb', backgroundColor: '#fafafa',
+            padding: '0 8px',
+            scrollbarWidth: 'none',
+          }}>
+            {EDITOR_NAV.map((s, i) => (
+              <button
+                key={s.id}
+                onClick={() => scrollToSection(s.id)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '5px',
+                  padding: '8px 10px', flexShrink: 0,
+                  background: 'none', border: 'none', borderBottom: '2px solid transparent',
+                  fontSize: '11px', fontWeight: '600', color: '#6b7280',
+                  cursor: 'pointer', whiteSpace: 'nowrap',
+                  transition: 'color 0.15s',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.color = '#4f46e5'; e.currentTarget.style.borderBottomColor = '#4f46e5' }}
+                onMouseLeave={e => { e.currentTarget.style.color = '#6b7280'; e.currentTarget.style.borderBottomColor = 'transparent' }}
+              >
+                <span style={{
+                  width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0,
+                  backgroundColor: '#ede9fe', color: '#4f46e5',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '9px', fontWeight: '800',
+                }}>{i + 1}</span>
+                {s.label}
+              </button>
+            ))}
+          </div>
+
           {/* Scrollable edit sections */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '20px 20px 12px' }}>
+          <div ref={scrollContainerRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 20px 12px' }}>
 
             {/* LinkedIn PDF Import — shown first so it auto-fills the profile below */}
-            <EditorSection number="1" title="Import from LinkedIn PDF" description="Auto-fills name, headline, location, email, skills, experience & education" defaultOpen={!linkedinData}>
+            <EditorSection id="pb-section-1" number="1" title="Import from LinkedIn PDF" description="Auto-fills name, headline, location, email, skills, experience & education" defaultOpen={!linkedinData}>
 
               {!linkedinData ? (
                 <div>
@@ -1105,7 +1158,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
             </EditorSection>
 
             {/* 0. Personal Profile — auto-filled by LinkedIn above */}
-            <EditorSection number="2" title="Personal Profile" description="Your identity — shown at the top of your public portfolio">
+            <EditorSection id="pb-section-2" number="2" title="Personal Profile" description="Your identity — shown at the top of your public portfolio">
 
               {/* Profile photo upload */}
               <div style={{ marginBottom: '14px' }}>
@@ -1190,7 +1243,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
             </EditorSection>
 
             {/* 3. Headline */}
-            <EditorSection number="3" title="Headline" description="Your professional headline used in the AI-generated narrative">
+            <EditorSection id="pb-section-3" number="3" title="Headline" description="Your professional headline used in the AI-generated narrative">
               <input
                 type="text"
                 value={editedHeadline}
@@ -1210,7 +1263,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
             </EditorSection>
 
             {/* 2. Professional Summary */}
-            <EditorSection number="4" title="Professional Summary" description="Tell recruiters who you are and what you bring to the table">
+            <EditorSection id="pb-section-4" number="4" title="Professional Summary" description="Tell recruiters who you are and what you bring to the table">
               <textarea
                 value={editedNarrative}
                 onChange={e => setEditedNarrative(e.target.value)}
@@ -1231,7 +1284,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
 
             {/* 3. Top Skills */}
             {narrativeData.top_skills?.length > 0 && (
-              <EditorSection number="5" title="Top Skills" description="AI-extracted from your repositories — shown as chips on your portfolio">
+              <EditorSection id="pb-section-5" number="5" title="Top Skills" description="AI-extracted from your repositories — shown as chips on your portfolio">
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px' }}>
                   {narrativeData.top_skills.map((skill, i) => {
                     const s = techChipStyle(skill.category)
@@ -1251,7 +1304,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
             )}
 
             {/* 4. Project Summaries */}
-            <EditorSection number="6" title="Project Summaries" description="Edit the one-liner shown on each project card. Generate AI descriptions for detailed project breakdowns.">
+            <EditorSection id="pb-section-6" number="6" title="Project Summaries" description="Edit the one-liner shown on each project card. Generate AI descriptions for detailed project breakdowns.">
                 <div style={{ marginBottom: '14px' }}>
                   <button
                     onClick={handleGenerateDescriptions}
@@ -1326,7 +1379,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
               </EditorSection>
 
             {/* 5. Project Media */}
-            <EditorSection number="7" title="Project Media" description="Paste a GitHub file URL — auto-converted to a displayable media URL" defaultOpen={false}>
+            <EditorSection id="pb-section-7" number="7" title="Project Media" description="Paste a GitHub file URL — auto-converted to a displayable media URL" defaultOpen={false}>
               <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#6b7280', lineHeight: 1.6 }}>
                 Paste a GitHub file URL. Repo2Reputation will automatically convert it into a displayable media URL.
               </p>
