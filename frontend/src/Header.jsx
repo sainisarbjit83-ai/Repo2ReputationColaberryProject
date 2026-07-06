@@ -439,34 +439,50 @@ function Header({ onLogout }) {
         {/* ── Browse tab ─────────────────────────────────────────────────────── */}
         {activeTab === 'browse' && (
           <>
-            {/* ONBOARDING CARD */}
-            {showOnboarding && (
-              <div className="mb-5 px-5 py-4 rounded-xl border border-indigo-100 bg-indigo-50 relative">
-                <button
-                  onClick={dismissOnboarding}
-                  className="absolute top-3 right-3 text-indigo-300 hover:text-indigo-500 text-lg leading-none"
-                >×</button>
-                <p className="text-xs font-semibold text-indigo-500 mb-3 uppercase tracking-wide">How it works</p>
-                <div className="flex items-center gap-3 flex-wrap">
-                  {[
-                    { n: '1', label: 'Select repositories' },
-                    { n: '2', label: 'Click Import' },
-                    { n: '3', label: 'Repo2Reputation analyzes your projects' },
-                    { n: '4', label: 'Generate your portfolio' },
-                  ].map((s, i, arr) => (
-                    <div key={s.n} className="flex items-center gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <div className="w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                          {s.n}
+            {/* PROGRESS STEPPER */}
+            {showOnboarding && (() => {
+              const step1Done = importedRepos.length > 0
+              const step2Done = importedRepos.length > 0 && analyzingFullNames.size === 0
+              const steps = [
+                { n: 1, label: 'Import Repos',    sub: 'Select & import from GitHub', done: step1Done },
+                { n: 2, label: 'AI Analysis',     sub: 'Runs automatically in background', done: step2Done },
+                { n: 3, label: 'Build Portfolio', sub: 'Switch to Portfolio tab',     done: false },
+              ]
+              return (
+                <div className="mb-5 px-5 py-4 rounded-xl border border-gray-200 bg-white shadow-sm relative">
+                  <button
+                    onClick={dismissOnboarding}
+                    className="absolute top-3 right-3 text-gray-300 hover:text-gray-500 text-xl leading-none"
+                  >×</button>
+                  <p className="text-xs font-semibold text-gray-400 mb-4 uppercase tracking-wider">Your progress</p>
+                  <div className="flex items-start">
+                    {steps.map((step, i) => {
+                      const isCurrent = !step.done && (i === 0 || steps[i - 1].done)
+                      return (
+                        <div key={step.n} className="flex items-start flex-1">
+                          <div className="flex flex-col items-center flex-1">
+                            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
+                              step.done   ? 'bg-green-500 text-white'
+                              : isCurrent ? 'bg-indigo-600 text-white ring-4 ring-indigo-100'
+                                          : 'bg-gray-100 text-gray-400'
+                            }`}>
+                              {step.done ? '✓' : step.n}
+                            </div>
+                            <p className={`text-xs mt-2 font-semibold text-center leading-tight ${
+                              step.done ? 'text-green-600' : isCurrent ? 'text-indigo-700' : 'text-gray-400'
+                            }`}>{step.label}</p>
+                            <p className="text-xs text-gray-400 text-center leading-tight mt-0.5 hidden sm:block">{step.sub}</p>
+                          </div>
+                          {i < steps.length - 1 && (
+                            <div className={`h-0.5 flex-1 mt-4 mx-2 transition-all ${steps[i].done ? 'bg-green-400' : 'bg-gray-200'}`} />
+                          )}
                         </div>
-                        <span className="text-xs text-indigo-800 font-medium">{s.label}</span>
-                      </div>
-                      {i < arr.length - 1 && <span className="text-indigo-300 text-sm">→</span>}
-                    </div>
-                  ))}
+                      )
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              )
+            })()}
 
             {/* Analysis-in-progress banner */}
             {analyzingFullNames.size > 0 && (
@@ -690,15 +706,31 @@ function Header({ onLogout }) {
                 </>
               ) : filteredRepos.length === 0 ? (
                 repos.length === 0 ? (
-                  <div className="flex flex-col items-center py-12 text-center">
-                    <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mb-3">
-                      <svg className="w-5 h-5 text-gray-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 7.5a3 3 0 013-3h12a3 3 0 013 3v9a3 3 0 01-3 3H6a3 3 0 01-3-3v-9z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 10.5h18" />
+                  <div className="flex flex-col items-center py-10 px-4 text-center gap-5">
+                    <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center">
+                      <svg className="w-8 h-8 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" />
                       </svg>
                     </div>
-                    <p className="font-semibold text-gray-700 mb-1">No repositories found</p>
-                    <p className="text-sm text-gray-400">Your connected GitHub account doesn't have any repositories yet.</p>
+                    <div>
+                      <p className="font-bold text-gray-800 text-base mb-1">No repositories found</p>
+                      <p className="text-sm text-gray-400 max-w-xs">
+                        Your connected GitHub account doesn't have any public repositories yet.
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-2.5 text-xs text-left bg-gray-50 rounded-xl p-4 w-full max-w-xs border border-gray-100">
+                      <p className="text-xs font-semibold text-gray-500 mb-1">Once you have repos, here's how it works:</p>
+                      {[
+                        'Select repos using the checkboxes',
+                        'Click Import — AI analysis runs automatically',
+                        'Switch to Portfolio tab to build your profile',
+                      ].map((text, i) => (
+                        <div key={i} className="flex items-start gap-2.5">
+                          <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-xs flex-shrink-0 mt-0.5">{i + 1}</span>
+                          <span className="text-gray-500">{text}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ) : selectedAccounts.size > 0 && !searchQuery.trim() ? (
                   <div className="flex flex-col items-center py-12 text-center">
