@@ -87,8 +87,6 @@ GitHub Import → Background Analysis → Portfolio Builder → LinkedIn PDF Aut
 
 ### Repository Analysis
 
-![Repository Analysis](docs/images/repo-analysis.png)
-
 The AI analysis pipeline inspects each repository and surfaces:
 
 - **Technology detection** — frameworks, languages, and tools with confidence scoring
@@ -99,8 +97,6 @@ The AI analysis pipeline inspects each repository and surfaces:
 ---
 
 ### Portfolio Builder
-
-![Portfolio Builder](docs/images/portfolio-builder.png)
 
 A structured editor that lets developers review and refine AI-generated content:
 
@@ -113,8 +109,6 @@ A structured editor that lets developers review and refine AI-generated content:
 ---
 
 ### Public Portfolio
-
-![Public Portfolio](docs/images/public-portfolio.png)
 
 A clean, recruiter-facing profile that communicates engineering depth at a glance:
 
@@ -252,8 +246,6 @@ All connected accounts appear as filter cards in Browse GitHub Repos with a "Pub
 ---
 
 ## System Architecture
-
-![Architecture Diagram](docs/images/architecture-diagram.png)
 
 ```
 ┌─────────────────────────────────────────────────────────┐
