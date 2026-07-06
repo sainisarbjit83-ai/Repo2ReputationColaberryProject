@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { BASE_URL } from './api'
+import { PublicPortfolioSkeleton } from './Skeleton'
 
 function ensureHttps(url) {
   if (!url) return url
@@ -834,11 +835,7 @@ export default function PublicPortfolio({ slug }) {
     return () => obs.disconnect()
   }, [portfolio])
 
-  if (loading) return (
-    <div style={{ minHeight: '100vh', backgroundColor: BG, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <p style={{ color: TM, fontSize: '14px' }}>Loading portfolio…</p>
-    </div>
-  )
+  if (loading) return <PublicPortfolioSkeleton />
 
   if (notFound) return (
     <div style={{ minHeight: '100vh', backgroundColor: BG, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>

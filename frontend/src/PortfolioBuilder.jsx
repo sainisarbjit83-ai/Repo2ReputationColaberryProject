@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { authFetch, BASE_URL } from './api'
 import { githubToRaw, isSupportedMediaUrl } from './utils/mediaUrl'
+import { PortfolioBuilderSkeleton } from './Skeleton'
 
 const POLL_MS = 3000
 
@@ -1505,7 +1506,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
     <div style={{ maxWidth: '640px', margin: '0 auto', padding: '8px 0' }}>
 
       {loading ? (
-        <p style={{ color: '#6b7280', fontSize: '14px' }}>Loading repositories…</p>
+        <PortfolioBuilderSkeleton />
       ) : loadError ? (
         <div style={{ padding: '24px 0', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <p style={{ color: '#dc2626', fontSize: '14px', margin: 0 }}>Failed to load repositories: {loadError}</p>
