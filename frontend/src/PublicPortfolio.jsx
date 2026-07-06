@@ -95,14 +95,14 @@ function getYearsExperience(linkedin, profile) {
 }
 
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
-function Sidebar({ title, headline, topSkills, githubUsername, profile, engineeringStrengths, careerSignals, repos, repoCount }) {
+function Sidebar({ title, headline, topSkills, githubUsername, profile, engineeringStrengths, careerSignals, repos, repoCount, className = '' }) {
   const grouped     = groupByCategory(topSkills)
   const displayName = profile?.fullName || title || 'Developer'
   const displayHead = profile?.headline || headline
   const initials    = displayName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
 
   return (
-    <aside style={{
+    <aside className={`pp-sidebar ${className}`} style={{
       width: '240px', flexShrink: 0,
       backgroundColor: BG,
       borderRight: `1px solid ${BD}`,
@@ -312,7 +312,7 @@ function TopNav({ active, onTab, slug }) {
 
 
       {/* Tabs */}
-      <div style={{ display: 'flex' }}>
+      <div className="pp-nav-tabs" style={{ display: 'flex', overflowX: 'auto', scrollbarWidth: 'none' }}>
         {TABS.map(tab => {
           const id = tab.toLowerCase()
           const on = active === id
@@ -343,7 +343,8 @@ function TopNav({ active, onTab, slug }) {
           display: 'flex', alignItems: 'center', gap: '5px',
           transition: 'background-color 0.15s',
         }}>
-        {downloading ? 'Generating…' : 'Download Resume PDF ↓'}
+        <span className="pp-nav-pdf-text">{downloading ? 'Generating…' : 'Download Resume PDF ↓'}</span>
+        <span className="pp-nav-pdf-icon">↓</span>
       </button>
     </nav>
   )
@@ -875,11 +876,29 @@ export default function PublicPortfolio({ slug }) {
         }
         a:hover { opacity: 0.8; }
         .proj-link:hover { color: #4361ee !important; }
+
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+          .pp-sidebar { display: none !important; }
+          .pp-layout { display: block !important; }
+          .pp-main { padding: 16px 16px 40px !important; }
+          .pp-mobile-header { display: flex !important; }
+          .pp-nav-tabs { scrollbar-width: none; }
+          .pp-nav-tabs::-webkit-scrollbar { display: none; }
+          .pp-nav-pdf-text { display: none; }
+          .pp-nav-pdf-icon { display: inline !important; }
+          .pp-highlights { flex-direction: column !important; }
+          .pp-highlights > div { border-right: none !important; border-bottom: 1px solid #e2e8f0 !important; }
+          .pp-highlights > div:last-child { border-bottom: none !important; }
+        }
+        @media (min-width: 769px) {
+          .pp-nav-pdf-icon { display: none !important; }
+        }
       `}</style>
 
       <TopNav active={activeTab} onTab={setActiveTab} slug={portfolio.slug} />
 
-      <div style={{ display: 'flex', minHeight: 'calc(100vh - 48px)' }}>
+      <div className="pp-layout" style={{ display: 'flex', minHeight: 'calc(100vh - 48px)' }}>
 
         <Sidebar
           title={title}
@@ -894,14 +913,58 @@ export default function PublicPortfolio({ slug }) {
         />
 
         {/* Main content */}
-        <main id="main-content" ref={mainRef} style={{ flex: 1, padding: '20px 28px 32px', minWidth: 0, overflowY: 'auto' }}>
+        <main id="main-content" ref={mainRef} className="pp-main" style={{ flex: 1, padding: '20px 28px 32px', minWidth: 0, overflowY: 'auto' }}>
+
+          {/* Mobile profile header — hidden on desktop via CSS */}
+          {(() => {
+            const displayName = profile?.fullName || title || 'Developer'
+            const displayHead = profile?.headline || headline
+            const initials    = displayName.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
+            return (
+              <div className="pp-mobile-header" style={{
+                display: 'none',
+                flexDirection: 'column', alignItems: 'center', gap: '10px',
+                paddingBottom: '20px', marginBottom: '16px',
+                borderBottom: `1px solid ${BD}`, textAlign: 'center',
+              }}>
+                <div style={{
+                  width: '72px', height: '72px', borderRadius: '50%',
+                  background: 'linear-gradient(135deg,#4361ee,#7c3aed)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#fff', fontWeight: '800', fontSize: '22px', overflow: 'hidden',
+                }}>
+                  {profile?.photoUrl
+                    ? <img src={profile.photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { e.target.style.display = 'none' }} />
+                    : initials}
+                </div>
+                <div>
+                  <h2 style={{ margin: '0 0 4px', fontSize: '18px', fontWeight: '800', color: T }}>{displayName}</h2>
+                  {displayHead && <p style={{ margin: '0 0 4px', fontSize: '12px', color: A, fontWeight: '600' }}>{displayHead}</p>}
+                  {profile?.location && <p style={{ margin: 0, fontSize: '12px', color: TS }}>📍 {profile.location}</p>}
+                </div>
+                {topSkills.length > 0 && (
+                  <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', width: '100%', paddingBottom: '4px', scrollbarWidth: 'none' }}>
+                    {topSkills.slice(0, 8).map((sk, i) => {
+                      const c = CAT[sk.category] || CAT.Other
+                      return (
+                        <span key={i} style={{
+                          flexShrink: 0, padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600',
+                          backgroundColor: c.bg, color: c.text,
+                        }}>{sk.name}</span>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )
+          })()}
 
           {/* ── Professional Summary ───────────────────────────────── */}
           <Section id="overview" icon="👤" title="Professional Summary">
             <SummaryText text={narrative || 'No summary available.'} />
 
             {/* Portfolio Highlights row */}
-            <div style={{
+            <div className="pp-highlights" style={{
               display: 'flex',
               border: `1px solid ${BD}`, borderRadius: '10px',
               overflow: 'hidden', backgroundColor: '#fff', marginTop: '14px',
