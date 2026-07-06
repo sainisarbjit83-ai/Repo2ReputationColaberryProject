@@ -906,6 +906,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
       )
       setRepoMedia(clean)
     }
+    setPortfolio(prev => ({ ...prev, status: saved.status, visibility: saved.visibility }))
     setNarrativeStatus('completed')
     setPublicUrl(null)   // return to Step 3 editor
   }
@@ -993,7 +994,9 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
 
   // ── Step 3: Narrative preview + publish ────────────────────────────────────
   if (narrativeStatus === 'completed' && narrativeData) {
-    const selectedRepos = [...selected].map(id => importedRepos.find(r => r.id === id)).filter(Boolean)
+    const selectedRepos  = [...selected].map(id => importedRepos.find(r => r.id === id)).filter(Boolean)
+    const liveUrl        = portfolio?.slug ? `${window.location.origin}/portfolio/${portfolio.slug}` : null
+    const isPublished    = !!publicUrl || portfolio?.visibility === 'public'
 
     const aiSkills      = narrativeData.top_skills || []
     const aiNames       = new Set(aiSkills.map(s => s.name.toLowerCase()))
@@ -1519,7 +1522,31 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
                   }}>{ic}</span>
                 ))}
               </div>
-              {publishError && <span style={{ fontSize: '11px', color: '#dc2626', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{publishError}</span>}
+              {publishError && <span style={{ fontSize: '11px', color: '#dc2626', maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{publishError}</span>}
+
+              {/* View Live button */}
+              {liveUrl && (
+                <a
+                  href={liveUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '5px',
+                    padding: '7px 12px', borderRadius: '7px', textDecoration: 'none',
+                    border: `1px solid ${isPublished ? '#16a34a' : '#d1d5db'}`,
+                    backgroundColor: isPublished ? '#f0fdf4' : '#f9fafb',
+                    color: isPublished ? '#16a34a' : '#9ca3af',
+                    fontWeight: '600', fontSize: '12px',
+                    pointerEvents: isPublished ? 'auto' : 'none',
+                    transition: 'all 0.15s',
+                    whiteSpace: 'nowrap',
+                  }}
+                  title={isPublished ? 'Open your live public portfolio' : 'Publish first to view live page'}
+                >
+                  {isPublished ? '🌐 View Live →' : '🔒 Not published'}
+                </a>
+              )}
+
               <button
                 onClick={handlePublish}
                 disabled={publishing}
@@ -1531,7 +1558,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
                   cursor: publishing ? 'not-allowed' : 'pointer', transition: 'background-color 0.15s',
                 }}
               >
-                {publishing ? 'Publishing…' : '↗ Publish Portfolio'}
+                {publishing ? 'Publishing…' : isPublished ? '↗ Re-publish' : '↗ Publish Portfolio'}
               </button>
             </div>
           </div>
