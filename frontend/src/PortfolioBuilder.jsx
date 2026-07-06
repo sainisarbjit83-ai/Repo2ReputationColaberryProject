@@ -994,6 +994,13 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
   if (narrativeStatus === 'completed' && narrativeData) {
     const selectedRepos = [...selected].map(id => importedRepos.find(r => r.id === id)).filter(Boolean)
 
+    const aiSkills      = narrativeData.top_skills || []
+    const aiNames       = new Set(aiSkills.map(s => s.name.toLowerCase()))
+    const linkedinOnlySkills = (linkedinData?.skills || [])
+      .filter(s => !aiNames.has(s.toLowerCase()))
+      .map(s => ({ name: s, category: 'Other', confidence: null, source: 'linkedin' }))
+    const mergedSkills  = [...aiSkills, ...linkedinOnlySkills]
+
     return (
       <div style={{
         display: 'flex', width: '100%',
@@ -1282,12 +1289,13 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
               </div>
             </EditorSection>
 
-            {/* 3. Top Skills */}
-            {narrativeData.top_skills?.length > 0 && (
-              <EditorSection id="pb-section-5" number="5" title="Top Skills" description="AI-extracted from your repositories — shown as chips on your portfolio">
+            {/* 3. Top Skills — AI repos + LinkedIn merged */}
+            {mergedSkills.length > 0 && (
+              <EditorSection id="pb-section-5" number="5" title="Top Skills" description="AI-extracted from repos + skills imported from LinkedIn PDF">
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px' }}>
-                  {narrativeData.top_skills.map((skill, i) => {
+                  {mergedSkills.map((skill, i) => {
                     const s = techChipStyle(skill.category)
+                    const isLinkedIn = skill.source === 'linkedin'
                     return (
                       <span key={i} style={{
                         display: 'inline-flex', alignItems: 'center', gap: '5px',
@@ -1295,11 +1303,19 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
                         backgroundColor: s.bg, color: s.color, border: `1px solid ${s.border}`,
                       }}>
                         {skill.name}
-                        <span style={{ opacity: 0.55, fontSize: '10px', fontWeight: '500' }}>{Math.round((skill.confidence || 0) * 100)}%</span>
+                        {isLinkedIn
+                          ? <span style={{ fontSize: '9px', fontWeight: '700', backgroundColor: '#0a66c2', color: '#fff', padding: '1px 4px', borderRadius: '3px', opacity: 0.85 }}>in</span>
+                          : <span style={{ opacity: 0.5, fontSize: '10px', fontWeight: '500' }}>{Math.round((skill.confidence || 0) * 100)}%</span>
+                        }
                       </span>
                     )
                   })}
                 </div>
+                {linkedinOnlySkills.length > 0 && (
+                  <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#9ca3af' }}>
+                    {linkedinOnlySkills.length} skill{linkedinOnlySkills.length !== 1 ? 's' : ''} added from LinkedIn · <span style={{ color: '#0a66c2', fontWeight: '600' }}>in</span> = LinkedIn source
+                  </p>
+                )}
               </EditorSection>
             )}
 
@@ -1498,7 +1514,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
             <MiniPreview
               headline={editedHeadline}
               narrative={editedNarrative}
-              topSkills={narrativeData.top_skills || []}
+              topSkills={mergedSkills}
               projects={editedProjects}
               repos={selectedRepos}
               analysisMap={analysisMap}
