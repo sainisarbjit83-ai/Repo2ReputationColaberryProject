@@ -500,13 +500,18 @@ function ProjectCard({ repo, oneLiner, aiDescription }) {
           {formatRepoName(repo.name)}
         </a>
 
-        {/* 2. Summary (collapsed) or AI Analysis (expanded) */}
-        {!expanded && collapseText && (
+        {/* 2. Summary — always show overview, expand for full AI analysis */}
+        {collapseText && (
           <p style={{
-            margin: '0 0 8px', fontSize: '12px', color: TS, lineHeight: 1.7,
-            overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical',
+            margin: '0 0 6px', fontSize: '12px', color: TS, lineHeight: 1.7,
           }}>
             {collapseText}
+          </p>
+        )}
+
+        {!expanded && aiDescription && (
+          <p style={{ margin: '0 0 8px', fontSize: '12px', color: TM, lineHeight: 1.7 }}>
+            {aiDescription.split(/\n\n+/)[0]}
           </p>
         )}
 
@@ -543,7 +548,7 @@ function ProjectCard({ repo, oneLiner, aiDescription }) {
             {tags.map((tag, i) => (
               <span key={i} style={{
                 padding: '2px 8px', borderRadius: '5px', fontSize: '10px', fontWeight: '600',
-                backgroundColor: '#f1f5f9', color: '#334155', border: `1px solid ${BD}`,
+                backgroundColor: '#dcfce7', color: '#166534', border: '1px solid #86efac',
               }}>{tag}</span>
             ))}
           </div>
@@ -575,7 +580,7 @@ function ProjectCard({ repo, oneLiner, aiDescription }) {
               onClick={() => setExpanded(e => !e)}
               style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: '11px', fontWeight: '600', color: A }}
             >
-              {expanded ? 'Show less ↑' : 'Read more ↓'}
+              {expanded ? 'Show less ↑' : 'Show more ↓'}
             </button>
           )}
           {repo.fullName && (

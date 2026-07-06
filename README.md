@@ -33,7 +33,7 @@ Students and early-career developers often have strong GitHub profiles but strug
 Repo2Reputation reads your GitHub repositories and does the work for you.
 
 ```
-GitHub Repositories
+GitHub Repositories (any account — public or private)
         ↓
   AI Repository Analysis
   (technology detection, architecture signals, code patterns)
@@ -60,31 +60,15 @@ This creates a more accurate and recruiter-friendly representation of a develope
 
 ---
 
-## Repository Improvement
-
-Repo2Reputation doesn't just generate portfolios.
-
-The platform identifies:
-
-- Missing README files
-- Missing documentation
-- Missing project demos
-- Weak project descriptions
-- Missing architecture explanations
-
-Helping developers improve repositories before generating a portfolio.
-
----
-
 ## What the Platform Generates
 
-✓ Professional Headline
-✓ About Me Narrative
-✓ Engineering Strengths
-✓ Project Descriptions
-✓ Public Portfolio
-✓ PDF Resume
-✓ Recruiter Search Profile
+✓ Professional Headline  
+✓ About Me Narrative  
+✓ Engineering Strengths  
+✓ Project Descriptions  
+✓ Public Portfolio  
+✓ PDF Resume  
+✓ Recruiter Search Profile  
 
 ---
 
@@ -95,7 +79,7 @@ Helping developers improve repositories before generating a portfolio.
 > [Watch Full Demo Video](docs/media/demo.mp4)
 
 **End-to-end flow:**
-GitHub Import → Analysis → Portfolio Builder → Published Portfolio → PDF Resume
+GitHub Import → Background Analysis → Portfolio Builder → LinkedIn PDF Auto-fill → Published Portfolio → PDF Resume
 
 ---
 
@@ -120,10 +104,10 @@ The AI analysis pipeline inspects each repository and surfaces:
 
 A structured editor that lets developers review and refine AI-generated content:
 
+- **LinkedIn PDF auto-fill** — Step 1: upload your LinkedIn PDF to auto-fill name, headline, location, email, skills, experience, and education
 - **Headline generation** — professional title derived from repository signals
 - **About Me narrative** — first-person summary written from capability signals, not project names
 - **Project descriptions** — 2–4 paragraph project overviews drawn from deep analysis data
-- **Experience integration** — upload a LinkedIn PDF to auto-extract work history and education
 - **Publish controls** — one click to go live with a public URL
 
 ---
@@ -134,8 +118,8 @@ A structured editor that lets developers review and refine AI-generated content:
 
 A clean, recruiter-facing profile that communicates engineering depth at a glance:
 
-- **Skills sidebar** — technologies grouped by category (Frontend, Backend, DevOps, AI, etc.)
-- **Project cards** — title, one-line summary, tech chips, and expandable project overview
+- **Skills sidebar** — technologies grouped by category (Frontend, Backend, DevOps, AI, etc.) shown as green chips
+- **Project cards** — title, one-line summary, always-visible first paragraph, and "Show more" for full AI analysis
 - **Experience timeline** — work history and education from LinkedIn
 - **PDF resume download** — Puppeteer-rendered resume from the same data
 - **Shareable URL** — `yoursite.com/portfolio/<slug>`
@@ -163,7 +147,7 @@ GPT-4o-mini inspects repository metadata and README content to extract:
 
 > Routes: `/api/deep-analysis`  ·  Service: `deepAnalysisPipeline.js`
 
-A multi-phase pipeline that goes beyond metadata:
+A multi-phase pipeline that goes beyond metadata. **Analysis runs automatically in the background after import** — no manual trigger required.
 
 ```
 Phase 1 — File Classification + Semantic Chunking
@@ -179,6 +163,11 @@ Phase 4 — Intelligence Agents
   Extract business domain, operational capabilities, resume impact statements,
   and portfolio narrative hooks.
 ```
+
+**Analysis UX:**
+- Live elapsed timer ("Running for 45s…") turns amber after 2 minutes
+- Stop, Retry, and Restart All controls available on both Browse and Portfolio tabs
+- Auto-clearing "Analyzing…" badge disappears when analysis completes
 
 ---
 
@@ -201,13 +190,38 @@ Two separate GPT calls produce the final portfolio content:
 
 ---
 
+## Multi-Account GitHub Access
+
+Repo2Reputation supports connecting multiple GitHub accounts — personal accounts, organizations, and accounts with private repositories.
+
+### How It Works
+
+**Primary account** — signed in via GitHub OAuth. All public and private repos are accessible.
+
+**Additional accounts** — install the Repo2Reputation GitHub App on any account you own. The App grants read access to all repos on that account (public and private) without OAuth session conflicts.
+
+```
+Settings → "Install GitHub App on Another Account"
+        ↓
+GitHub App installer (pick account + repos)
+        ↓
+Redirect back to app → account card appears in Browse
+        ↓
+Repos from all accounts visible in one place
+```
+
+All connected accounts appear as filter cards in Browse GitHub Repos with a "Public + Private" badge.
+
+---
+
 ## Key Benefits
 
 ### For Developers & Students
 
 - Turn a GitHub profile into a professional portfolio in minutes
+- Browse repos from multiple GitHub accounts (personal + org + private)
+- Auto-fill portfolio with LinkedIn PDF — one upload fills name, headline, location, email, and skills
 - Get AI-written project descriptions grounded in your actual code
-- Import LinkedIn work history with a single PDF upload
 - Download a formatted PDF resume at any time
 - Share a public portfolio URL with recruiters
 
@@ -216,7 +230,7 @@ Two separate GPT calls produce the final portfolio content:
 - Browse a clean portfolio that surfaces engineering depth, not just a list of repos
 - Understand technology strengths without reading code
 - Search developers by skill, technology stack, or domain
-- Evaluate candidates at a glance — one-line project summaries, expandable deep analysis
+- Evaluate candidates at a glance — always-visible project overview, expandable full analysis
 
 ---
 
@@ -232,8 +246,8 @@ Two separate GPT calls produce the final portfolio content:
 >
 > **Engineering Strengths:** AI/ML integration using OpenAI · Production infrastructure defined as code · Enterprise-level backend development
 >
-> **Project Overview (on click):**
-> This platform delivers an AI-powered API service designed for enterprise workflow automation, combining a RESTful Express backend with OpenAI integration to process and respond to structured business inputs. The architecture follows a layered service pattern with Sequelize as the ORM layer over PostgreSQL, enabling clean separation between routing, business logic, and data access. Authentication is handled via JWT middleware, ensuring stateless, scalable request verification across all protected endpoints. The system is containerized with Docker and includes environment-specific configuration, making it deployment-ready across cloud and on-premise targets.
+> **Project Overview (always visible):**
+> This platform delivers an AI-powered API service designed for enterprise workflow automation, combining a RESTful Express backend with OpenAI integration to process and respond to structured business inputs. The architecture follows a layered service pattern with Sequelize as the ORM layer over PostgreSQL, enabling clean separation between routing, business logic, and data access.
 
 ---
 
@@ -242,23 +256,24 @@ Two separate GPT calls produce the final portfolio content:
 ![Architecture Diagram](docs/images/architecture-diagram.png)
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                     Frontend (React + Vite)          │
-│  LoginForm  RegisterForm  Header  PortfolioBuilder   │
-│  PublicPortfolio  RecruiterSearch  AnalysisPanel     │
-└──────────────────────┬──────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│                     Frontend (React + Vite)              │
+│  Header  Settings  PortfolioBuilder  PublicPortfolio     │
+│  RecruiterSearch  AnalysisPanel                          │
+└──────────────────────┬──────────────────────────────────┘
                        │ REST API
-┌──────────────────────▼──────────────────────────────┐
-│                   Backend (Express 5)                │
-│  /api/auth   /api/repos    /api/analysis             │
-│  /api/deep-analysis        /api/portfolios           │
-│  /api/search               /api/users                │
-└─────┬──────────────┬───────────────┬────────────────┘
+┌──────────────────────▼──────────────────────────────────┐
+│                   Backend (Express 5)                    │
+│  /api/auth         /api/repos        /api/analysis       │
+│  /api/deep-analysis                  /api/portfolios     │
+│  /api/github-accounts                /api/github-app     │
+│  /api/search                         /api/users          │
+└─────┬──────────────┬───────────────┬────────────────────┘
       │              │               │
-┌─────▼─────┐  ┌─────▼──────┐  ┌────▼──────────────┐
-│ PostgreSQL │  │  OpenAI    │  │  GitHub API        │
-│ (pg pool) │  │  GPT-4o    │  │  (repo enrichment) │
-└───────────┘  └────────────┘  └────────────────────┘
+┌─────▼─────┐  ┌─────▼──────┐  ┌────▼──────────────────┐
+│ PostgreSQL │  │  OpenAI    │  │  GitHub API / App      │
+│ (pg pool) │  │  GPT-4o    │  │  OAuth + App installs  │
+└───────────┘  └────────────┘  └────────────────────────┘
 ```
 
 ---
@@ -272,9 +287,10 @@ Two separate GPT calls produce the final portfolio content:
 | Database | PostgreSQL 14+ |
 | Migrations | node-pg-migrate |
 | AI | OpenAI API (GPT-4o-mini) |
+| Auth | GitHub OAuth (JWT sessions) |
+| GitHub App | RS256 JWT, installation tokens |
 | PDF Generation | Puppeteer |
 | PDF Parsing | pdfjs-dist |
-| Auth | JWT + bcrypt |
 | File Uploads | Multer |
 
 ---
@@ -285,22 +301,27 @@ Two separate GPT calls produce the final portfolio content:
 Repo2Reputation/
 ├── backend/
 │   ├── db/
-│   │   ├── migrations/         # PostgreSQL migrations (node-pg-migrate)
-│   │   ├── postgres.js         # DB connection pool
+│   │   ├── migrations/               # PostgreSQL migrations (node-pg-migrate)
+│   │   ├── postgres.js               # DB connection pool
 │   │   └── seed.js
 │   ├── middleware/
-│   │   └── authMiddleware.js   # JWT verification
+│   │   └── authMiddleware.js         # JWT verification
 │   ├── routes/
-│   │   ├── auth.js             # Register / login
-│   │   ├── users.js            # User profile
-│   │   ├── repos.js            # GitHub repo import
-│   │   ├── analysis.js         # Basic AI analysis
-│   │   ├── deepAnalysis.js     # Deep analysis pipeline
-│   │   ├── portfolios.js       # Portfolio CRUD, narrative, PDF
-│   │   └── search.js           # Recruiter search
+│   │   ├── auth.js                   # GitHub OAuth login
+│   │   ├── users.js                  # User profile
+│   │   ├── repos.js                  # GitHub repo import + delete
+│   │   ├── githubAccounts.js         # Connected OAuth accounts
+│   │   ├── githubApp.js              # GitHub App install flow + installations
+│   │   ├── analysis.js               # Basic AI analysis
+│   │   ├── deepAnalysis.js           # Deep analysis pipeline + cancel/restart
+│   │   ├── portfolios.js             # Portfolio CRUD, narrative, PDF, LinkedIn extract
+│   │   └── search.js                 # Recruiter search
 │   ├── services/
-│   │   ├── openai.js                 # GPT prompts: analysis, narrative, descriptions
+│   │   ├── openai.js                 # GPT prompts: analysis, narrative, descriptions, LinkedIn
+│   │   ├── githubApp.js              # GitHub App JWT auth + installation tokens
 │   │   ├── deepAnalysisPipeline.js   # Multi-phase deep analysis orchestrator
+│   │   ├── deepAnalysisQueue.js      # Background analysis queue
+│   │   ├── analysisQueue.js          # Basic analysis queue
 │   │   ├── codeIntelligence.js       # Code-level signal extraction
 │   │   ├── inferenceEngine.js        # Pattern and capability inference
 │   │   ├── intelligenceAgents.js     # Business value and portfolio signals
@@ -314,27 +335,18 @@ Repo2Reputation/
 │   └── server.js
 ├── frontend/
 │   └── src/
-│       ├── App.jsx               # Route handling (SPA)
-│       ├── Header.jsx            # Authenticated app shell
-│       ├── LoginForm.jsx
-│       ├── RegisterForm.jsx
-│       ├── RepoCard.jsx          # Repository list item
-│       ├── AnalysisPanel.jsx     # Analysis status + results view
-│       ├── PortfolioBuilder.jsx  # Portfolio editor (narrative, projects, media)
-│       ├── PublicPortfolio.jsx   # Public recruiter-facing portfolio page
-│       ├── RecruiterSearch.jsx   # Developer search interface
+│       ├── App.jsx                   # Route handling (SPA)
+│       ├── Header.jsx                # Authenticated app shell + Browse tab
+│       ├── Settings.jsx              # Account management + GitHub App installs
+│       ├── PortfolioBuilder.jsx      # Portfolio editor (LinkedIn, narrative, projects, media)
+│       ├── PublicPortfolio.jsx       # Public recruiter-facing portfolio page
+│       ├── RecruiterSearch.jsx       # Developer search interface
+│       ├── AnalysisPanel.jsx         # Analysis status + results view
 │       ├── ProfileCard.jsx
-│       └── api.js                # Authenticated fetch helper + BASE_URL
+│       └── api.js                    # Authenticated fetch helper + BASE_URL
 ├── docs/
 │   ├── images/
-│   │   ├── hero.png
-│   │   ├── repo-analysis.png
-│   │   ├── portfolio-builder.png
-│   │   ├── public-portfolio.png
-│   │   └── architecture-diagram.png
 │   └── media/
-│       ├── demo.gif
-│       └── demo.mp4
 └── README.md
 ```
 
@@ -347,7 +359,8 @@ Repo2Reputation/
 - Node.js 18+
 - PostgreSQL 14+
 - OpenAI API key
-- GitHub Personal Access Token
+- GitHub OAuth App (for login)
+- GitHub App (for multi-account private repo access)
 
 ### 1. Clone the repo
 
@@ -356,7 +369,22 @@ git clone <repo-url>
 cd Repo2Reputation_Colaberry_Project
 ```
 
-### 2. Backend setup
+### 2. Create a GitHub OAuth App
+
+1. Go to `github.com/settings/developers` → **New OAuth App**
+2. Set **Authorization callback URL** to `http://localhost:5000/api/auth/github/callback`
+3. Copy the **Client ID** and **Client Secret**
+
+### 3. Create a GitHub App (for multi-account access)
+
+1. Go to `github.com/settings/apps` → **New GitHub App**
+2. Set **Setup URL** to `http://localhost:5000/api/github-app/installed`
+3. Check **"Redirect on update"**
+4. Under Permissions → Repository → **Contents: Read-only**
+5. Generate and download a **private key** (.pem file)
+6. Copy the **App ID** and **App slug**
+
+### 4. Backend setup
 
 ```bash
 cd backend
@@ -366,11 +394,36 @@ npm install
 Create a `.env` file in `backend/`:
 
 ```env
+# Database
 DATABASE_URL=postgres://user:password@localhost:5432/repo2reputation
+
+# Auth
 JWT_SECRET=your_jwt_secret
+
+# GitHub OAuth (for login)
+GITHUB_CLIENT_ID=your_oauth_client_id
+GITHUB_CLIENT_SECRET=your_oauth_client_secret
+
+# GitHub App (for multi-account private repo access)
+GITHUB_APP_ID=your_app_id
+GITHUB_APP_SLUG=your-app-slug
+GITHUB_APP_PRIVATE_KEY_BASE64=<base64-encoded contents of the .pem file>
+
+# OpenAI
 OPENAI_API_KEY=sk-...
-GITHUB_TOKEN=ghp_...
+
+# URLs
 FRONTEND_URL=http://localhost:5173
+```
+
+To base64-encode the private key:
+
+```bash
+# macOS / Linux
+base64 -w 0 your-app.private-key.pem
+
+# Windows PowerShell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("your-app.private-key.pem"))
 ```
 
 Run database migrations:
@@ -386,7 +439,7 @@ npm start
 # Runs on http://localhost:5000
 ```
 
-### 3. Frontend setup
+### 5. Frontend setup
 
 ```bash
 cd frontend
@@ -399,22 +452,59 @@ npm run dev
 
 ## Key API Endpoints
 
+### Authentication
 | Method | Endpoint | Description |
 |---|---|---|
-| `POST` | `/api/auth/register` | Create account |
-| `POST` | `/api/auth/login` | Login, returns JWT |
+| `GET` | `/api/auth/github` | Initiate GitHub OAuth login |
+| `GET` | `/api/auth/github/callback` | OAuth callback — returns JWT |
+
+### Repositories
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/repos` | List all repos (primary + connected + App) |
 | `GET` | `/api/repos/imported` | List imported repositories |
 | `POST` | `/api/repos/import` | Import repos from GitHub |
+| `DELETE` | `/api/repos/:id` | Delete imported repo + all analysis data |
+
+### GitHub Accounts
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/github-accounts` | List connected OAuth accounts |
+| `DELETE` | `/api/github-accounts/:id` | Disconnect an OAuth account |
+
+### GitHub App (Multi-Account)
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/github-app/install` | Redirect to GitHub App installer |
+| `GET` | `/api/github-app/installed` | Callback after App installation |
+| `GET` | `/api/github-app/installations` | List user's App installations |
+| `DELETE` | `/api/github-app/installations/:id` | Remove an installation |
+
+### Analysis
+| Method | Endpoint | Description |
+|---|---|---|
 | `POST` | `/api/analysis/repo/:id` | Run basic AI analysis |
-| `POST` | `/api/deep-analysis/:id` | Start deep analysis pipeline |
-| `GET` | `/api/deep-analysis/:id/status` | Poll deep analysis progress |
+| `POST` | `/api/deep-analysis/run` | Queue deep analysis for a repo |
+| `GET` | `/api/deep-analysis/:id/latest` | Poll deep analysis status |
+| `POST` | `/api/deep-analysis/cancel-pending` | Stop all pending analyses |
+
+### Portfolios
+| Method | Endpoint | Description |
+|---|---|---|
 | `POST` | `/api/portfolios` | Create portfolio from repos |
+| `GET` | `/api/portfolios/:id` | Load saved portfolio |
 | `POST` | `/api/portfolios/:id/generate-narrative` | AI-generate portfolio narrative |
 | `POST` | `/api/portfolios/:id/generate-project-descriptions` | AI-generate per-project overviews |
-| `POST` | `/api/portfolios/:id/linkedin-pdf` | Import LinkedIn PDF |
+| `POST` | `/api/portfolios/extract-linkedin` | Extract LinkedIn PDF (no portfolio ID needed) |
+| `POST` | `/api/portfolios/:id/linkedin-pdf` | Extract + save LinkedIn PDF to portfolio |
+| `PATCH` | `/api/portfolios/:id/save` | Save edits |
 | `PATCH` | `/api/portfolios/:id/publish` | Publish portfolio publicly |
 | `GET` | `/api/portfolios/public/:slug` | Public portfolio data (no auth) |
 | `GET` | `/api/portfolios/public/:slug/pdf` | Download PDF resume (no auth) |
+
+### Search
+| Method | Endpoint | Description |
+|---|---|---|
 | `GET` | `/api/search` | Recruiter developer search |
 
 ---
@@ -425,6 +515,7 @@ npm run dev
 |---|---|
 | Developer portfolio | `http://localhost:5173/portfolio/<slug>` |
 | Recruiter search | `http://localhost:5173/search` |
+| Settings | `http://localhost:5173/settings` |
 
 ---
 
@@ -441,24 +532,14 @@ npm run migrate:down
 npm run migrate:create <migration-name>
 ```
 
----
-
-## Media Assets
-
-Add screenshots and demo files to the `docs/` folder so the README images render correctly:
-
-```
-docs/
-├── images/
-│   ├── hero.png                   # Full-app hero screenshot
-│   ├── repo-analysis.png          # Analysis panel screenshot
-│   ├── portfolio-builder.png      # Portfolio editor screenshot
-│   ├── public-portfolio.png       # Public portfolio page screenshot
-│   └── architecture-diagram.png   # System architecture diagram
-└── media/
-    ├── demo.gif                   # Animated end-to-end demo
-    └── demo.mp4                   # Full demo video
-```
+Key tables:
+- `users` — user accounts (GitHub OAuth)
+- `github_connected_accounts` — additional OAuth-connected accounts
+- `github_app_installations` — GitHub App installations per user
+- `repositories` — imported repos
+- `analyses` — basic AI analysis results
+- `deep_analyses` — deep analysis pipeline results
+- `portfolios` — portfolio content, narrative, and publish state
 
 ---
 

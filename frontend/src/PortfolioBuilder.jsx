@@ -517,7 +517,11 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
     if (narrativeData) {
       setEditedHeadline(narrativeData.headline || '')
       setEditedNarrative(narrativeData.narrative || '')
-      setEditedProjects(narrativeData.projects || [])
+      // If narrative has no projects, seed from the portfolio's analyzed repos
+      const projects = narrativeData.projects?.length > 0
+        ? narrativeData.projects
+        : (narrativeData.repos || []).map(r => ({ repoName: r.name, oneLiner: r.analysis?.whatItDoes || r.description || '' }))
+      setEditedProjects(projects)
       setSaved(false)
     }
   }, [narrativeData])
@@ -864,7 +868,11 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
       setNarrativeData(saved.narrative)
       setEditedHeadline(saved.narrative.headline || '')
       setEditedNarrative(saved.narrative.narrative || '')
-      setEditedProjects(saved.narrative.projects || [])
+      // Seed projects from narrative; fall back to portfolio repos if narrative has none
+      const projects = saved.narrative.projects?.length > 0
+        ? saved.narrative.projects
+        : (saved.repos || []).map(r => ({ repoName: r.name, oneLiner: r.analysis?.whatItDoes || r.description || '' }))
+      setEditedProjects(projects)
     }
     if (saved.profile && Object.keys(saved.profile).length > 0) {
       setProfile(p => ({ ...p, ...saved.profile }))
@@ -1242,8 +1250,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
             )}
 
             {/* 4. Project Summaries */}
-            {editedProjects.length > 0 && (
-              <EditorSection number="6" title="Project Summaries" description="Edit the one-liner shown on each project card. Generate AI descriptions for detailed project breakdowns.">
+            <EditorSection number="6" title="Project Summaries" description="Edit the one-liner shown on each project card. Generate AI descriptions for detailed project breakdowns.">
                 <div style={{ marginBottom: '14px' }}>
                   <button
                     onClick={handleGenerateDescriptions}
@@ -1316,7 +1323,6 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
                   ))}
                 </div>
               </EditorSection>
-            )}
 
             {/* 5. Project Media */}
             <EditorSection number="7" title="Project Media" description="Paste a GitHub file URL — auto-converted to a displayable media URL" defaultOpen={false}>
