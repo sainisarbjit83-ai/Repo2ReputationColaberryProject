@@ -453,6 +453,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
   const [generatingDescs, setGeneratingDescs] = useState(false)
   const [descsGenerated,  setDescsGenerated]  = useState(false)
   const [descsError,      setDescsError]      = useState(null)
+  const [showAllSkills,   setShowAllSkills]   = useState(false)
 
   // Step 4 — publish
   const [publishing, setPublishing] = useState(false)
@@ -1290,34 +1291,60 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
             </EditorSection>
 
             {/* 3. Top Skills — AI repos + LinkedIn merged */}
-            {mergedSkills.length > 0 && (
-              <EditorSection id="pb-section-5" number="5" title="Top Skills" description="AI-extracted from repos + skills imported from LinkedIn PDF">
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px' }}>
-                  {mergedSkills.map((skill, i) => {
-                    const s = techChipStyle(skill.category)
-                    const isLinkedIn = skill.source === 'linkedin'
-                    return (
-                      <span key={i} style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '5px',
-                        padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600',
-                        backgroundColor: s.bg, color: s.color, border: `1px solid ${s.border}`,
-                      }}>
-                        {skill.name}
-                        {isLinkedIn
-                          ? <span style={{ fontSize: '9px', fontWeight: '700', backgroundColor: '#0a66c2', color: '#fff', padding: '1px 4px', borderRadius: '3px', opacity: 0.85 }}>in</span>
-                          : <span style={{ opacity: 0.5, fontSize: '10px', fontWeight: '500' }}>{Math.round((skill.confidence || 0) * 100)}%</span>
-                        }
-                      </span>
-                    )
-                  })}
-                </div>
-                {linkedinOnlySkills.length > 0 && (
-                  <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#9ca3af' }}>
-                    {linkedinOnlySkills.length} skill{linkedinOnlySkills.length !== 1 ? 's' : ''} added from LinkedIn · <span style={{ color: '#0a66c2', fontWeight: '600' }}>in</span> = LinkedIn source
-                  </p>
-                )}
-              </EditorSection>
-            )}
+            {mergedSkills.length > 0 && (() => {
+              const SKILL_LIMIT = 15
+              const visibleSkills = showAllSkills ? mergedSkills : mergedSkills.slice(0, SKILL_LIMIT)
+              const hiddenCount   = mergedSkills.length - SKILL_LIMIT
+              return (
+                <EditorSection id="pb-section-5" number="5" title="Top Skills" description="AI-extracted from repos + skills imported from LinkedIn PDF">
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px' }}>
+                    {visibleSkills.map((skill, i) => {
+                      const isLinkedIn = skill.source === 'linkedin'
+                      const s = isLinkedIn
+                        ? { bg: '#e8f3ff', color: '#0a66c2', border: '#bfdbfe' }
+                        : techChipStyle(skill.category)
+                      return (
+                        <span key={i} style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '5px',
+                          padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600',
+                          backgroundColor: s.bg, color: s.color, border: `1px solid ${s.border}`,
+                        }}>
+                          {skill.name}
+                          {isLinkedIn
+                            ? <span style={{ fontSize: '9px', fontWeight: '700', backgroundColor: '#0a66c2', color: '#fff', padding: '1px 4px', borderRadius: '3px', opacity: 0.8 }}>in</span>
+                            : <span style={{ opacity: 0.5, fontSize: '10px', fontWeight: '500' }}>{Math.round((skill.confidence || 0) * 100)}%</span>
+                          }
+                        </span>
+                      )
+                    })}
+                  </div>
+
+                  {/* Show all / Show less toggle */}
+                  {mergedSkills.length > SKILL_LIMIT && (
+                    <button
+                      onClick={() => setShowAllSkills(v => !v)}
+                      style={{
+                        marginTop: '10px', background: 'none', border: 'none',
+                        fontSize: '11px', fontWeight: '600', color: '#4f46e5',
+                        cursor: 'pointer', padding: '2px 0',
+                      }}
+                    >
+                      {showAllSkills ? `Show less ↑` : `Show all ${mergedSkills.length} skills ↓`}
+                    </button>
+                  )}
+
+                  {linkedinOnlySkills.length > 0 && (
+                    <p style={{ margin: '8px 0 0', fontSize: '11px', color: '#9ca3af' }}>
+                      {linkedinOnlySkills.length} skill{linkedinOnlySkills.length !== 1 ? 's' : ''} from LinkedIn
+                      · <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                          <span style={{ fontSize: '9px', fontWeight: '700', backgroundColor: '#0a66c2', color: '#fff', padding: '1px 4px', borderRadius: '3px' }}>in</span>
+                          <span> = LinkedIn source</span>
+                        </span>
+                    </p>
+                  )}
+                </EditorSection>
+              )
+            })()}
 
             {/* 4. Project Summaries */}
             <EditorSection id="pb-section-6" number="6" title="Project Summaries" description="Edit the one-liner shown on each project card. Generate AI descriptions for detailed project breakdowns.">
