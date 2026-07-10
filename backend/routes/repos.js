@@ -82,6 +82,7 @@ function mapGithubRepo(r, accountUsername) {
     fullName:        r.full_name,
     description:     r.description || null,
     private:         r.private,
+    fork:            r.fork || false,
     language:        r.language || null,
     starsCount:      r.stargazers_count,
     forksCount:      r.forks_count,
@@ -89,6 +90,7 @@ function mapGithubRepo(r, accountUsername) {
     defaultBranch:   r.default_branch,
     repoCreatedAt:   r.created_at,
     repoUpdatedAt:   r.updated_at,
+    pushedAt:        r.pushed_at || r.updated_at,
     sizeKb:          r.size,
     accountUsername,
   };
@@ -197,6 +199,50 @@ router.get('/', authMiddleware, async (req, res) => {
   } catch (err) {
     console.error('[repos] list error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to fetch repositories.' } });
+  }
+});
+
+// POST /api/repos/auto-import — first-login helper: fetch top 10 non-fork repos by push date
+router.post('/auto-import', authMiddleware, async (req, res) => {
+  const { id: userId } = req.user;
+
+  try {
+    // Skip if user already has imported repos
+    const existing = await pool.query(
+      'SELECT COUNT(*) FROM repositories WHERE user_id = $1',
+      [userId]
+    );
+    if (parseInt(existing.rows[0].count, 10) > 0) {
+      return res.status(200).json({ success: true, data: { skipped: true } });
+    }
+
+    const primaryInfo = await getGithubInfo(userId);
+    if (!primaryInfo.github_username) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'NO_GITHUB_CONNECTED', message: 'GitHub account not connected.' },
+      });
+    }
+
+    const apiUrl = primaryInfo.github_access_token
+      ? `${GITHUB_API}/user/repos`
+      : `${GITHUB_API}/users/${primaryInfo.github_username}/repos`;
+
+    const response = await axios.get(apiUrl, {
+      headers: makeGithubHeaders(primaryInfo.github_access_token),
+      params: { per_page: 100, sort: 'pushed', type: 'owner' },
+    });
+
+    const top10 = response.data
+      .filter(r => !r.fork)
+      .slice(0, 10)
+      .map(r => r.full_name);
+
+    return res.status(200).json({ success: true, data: { repoFullNames: top10 } });
+
+  } catch (err) {
+    console.error('[repos] auto-import error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to auto-import repositories.' } });
   }
 });
 

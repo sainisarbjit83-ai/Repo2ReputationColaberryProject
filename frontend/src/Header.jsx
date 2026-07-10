@@ -84,10 +84,12 @@ function Header({ onLogout }) {
   const [appInstallations, setAppInstallations]       = useState([])
   const [connectBanner, setConnectBanner]             = useState(null)
   const [analyzingFullNames, setAnalyzingFullNames]   = useState(new Set())
+  const [autoImporting, setAutoImporting]             = useState(false)
+  const [autoImportError, setAutoImportError]         = useState(null)
 
   useEffect(() => {
     fetchRepos()
-    fetchImportedRepos()
+    fetchImportedReposAndMaybeAutoImport()
     fetchCurrentUser()
     fetchConnectedAccounts()
     fetchAppInstallations()
@@ -212,6 +214,54 @@ function Header({ onLogout }) {
     const json = await res.json()
     setImportedRepos(json.data || [])
     setImportedCount(json.meta?.total || 0)
+  }
+
+  async function fetchImportedReposAndMaybeAutoImport() {
+    const res = await authFetch(`${BASE_URL}/api/repos/imported`, {}, onLogout)
+    if (!res) return
+    const json = await res.json()
+    const imported = json.data || []
+    setImportedRepos(imported)
+    setImportedCount(json.meta?.total || 0)
+
+    // First-time user — auto-import top 10 non-fork repos
+    if (imported.length === 0) {
+      setAutoImporting(true)
+      setAutoImportError(null)
+      try {
+        const discoverRes = await authFetch(`${BASE_URL}/api/repos/auto-import`, { method: 'POST' }, onLogout)
+        if (!discoverRes) { setAutoImporting(false); return }
+        const discoverJson = await discoverRes.json()
+        if (!discoverJson.success) { setAutoImporting(false); setAutoImportError('Could not discover repositories.'); return }
+        if (discoverJson.data.skipped) { setAutoImporting(false); return }
+
+        const repoFullNames = discoverJson.data.repoFullNames || []
+        if (repoFullNames.length === 0) { setAutoImporting(false); return }
+
+        const importRes = await authFetch(
+          `${BASE_URL}/api/repos/import`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ repoFullNames }) },
+          onLogout
+        )
+        if (!importRes) { setAutoImporting(false); return }
+        const importJson = await importRes.json()
+        setAutoImporting(false)
+
+        if (importJson.success) {
+          const importedNames = new Set(
+            (importJson.data.results || []).filter(r => r.status === 'succeeded').map(r => r.fullName)
+          )
+          setAnalyzingFullNames(importedNames)
+          await fetchImportedRepos()
+          setActiveTab('portfolio')
+        } else {
+          setAutoImportError(importJson.error?.message || 'Auto-import failed.')
+        }
+      } catch {
+        setAutoImporting(false)
+        setAutoImportError('Auto-import failed. You can import repos manually.')
+      }
+    }
   }
 
   async function fetchConnectedAccounts() {
@@ -393,8 +443,26 @@ function Header({ onLogout }) {
         </div>
       </div>
 
+      {/* AUTO-IMPORT LOADING SCREEN */}
+      {autoImporting && (
+        <div className="mt-4 bg-white border border-gray-200 rounded-2xl p-12 shadow-sm flex flex-col items-center justify-center gap-5 text-center">
+          <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg,#4361ee,#7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span style={{ fontSize: 26 }}>⚙️</span>
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 mb-1">Setting up your portfolio…</h2>
+            <p className="text-sm text-gray-500">Importing your 10 most recent GitHub repositories. This takes about a minute.</p>
+          </div>
+          <div style={{ width: '100%', maxWidth: 320, height: 6, background: '#e5e7eb', borderRadius: 99, overflow: 'hidden' }}>
+            <div style={{ height: '100%', background: 'linear-gradient(90deg,#4361ee,#7c3aed)', borderRadius: 99, animation: 'r2r-progress 1.8s ease-in-out infinite' }} />
+          </div>
+          <style>{`@keyframes r2r-progress { 0%{width:10%} 50%{width:80%} 100%{width:10%} }`}</style>
+          <p className="text-xs text-gray-400">GitHub connected · Top 10 repos by recent activity</p>
+        </div>
+      )}
+
       {/* MAIN SECTION */}
-      <div className="mt-4 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+      {!autoImporting && <div className="mt-4 bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
 
         {/* Tabs + Import button */}
         <div className="flex items-center justify-between mb-5 border-b border-gray-100 pb-4">
@@ -943,7 +1011,15 @@ function Header({ onLogout }) {
           />
         )}
 
-      </div>
+      </div>}
+
+      {/* Auto-import error banner */}
+      {autoImportError && !autoImporting && (
+        <div className="mt-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+          {autoImportError} — you can import repos manually from the Browse tab.
+        </div>
+      )}
+
     </div>
   )
 }
