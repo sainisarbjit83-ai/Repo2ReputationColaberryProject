@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { authFetch, BASE_URL } from './api'
 import { githubToRaw, isSupportedMediaUrl } from './utils/mediaUrl'
 import { PortfolioBuilderSkeleton } from './Skeleton'
@@ -377,7 +377,7 @@ function MediaInput({ repoName, value, onChange }) {
   )
 }
 
-function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
+function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = false }) {
   // Data loading
   const [importedRepos, setImportedRepos] = useState([])
   const [analysisMap, setAnalysisMap]     = useState({})
@@ -460,6 +460,9 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
   const [publicUrl, setPublicUrl]   = useState(null)
   const [publishError, setPublishError] = useState(null)
   const [copied, setCopied]         = useState(false)
+
+  // Auto-start: tracks whether we've already kicked off auto-generation
+  const autoStartedRef = useRef(false)
 
   useEffect(() => {
     loadRepos()
@@ -554,6 +557,69 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
       setProfile(p => ({ ...p, ...portfolio.profile }))
     }
   }, [portfolio])
+
+  // Auto-start: when autoStart=true, wait until repos load then auto-create + generate
+  useEffect(() => {
+    if (!autoStart) return
+    if (loading) return
+    if (autoStartedRef.current) return
+    if (portfolio) return                      // already has a portfolio
+    if (narrativeStatus === 'completed') return // narrative already done
+    if (importedRepos.length === 0) return     // no repos yet
+
+    autoStartedRef.current = true
+
+    const completedRepos = importedRepos.filter(r =>
+      ['completed', 'partial'].includes(repoStatusMap[r.id]?.status)
+    )
+    const reposToUse = completedRepos.length > 0 ? completedRepos : importedRepos
+    const ids = reposToUse.map(r => r.id)
+
+    // Auto-select all repos and set a default title
+    setSelected(new Set(ids))
+    setTitle('My Portfolio')
+
+    // Small delay so state settles before we fire the create request
+    setTimeout(async () => {
+      setCreating(true)
+      setCreateError(null)
+      const res = await authFetch(`${BASE_URL}/api/portfolios`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'My Portfolio', repositoryIds: ids }),
+      }, onLogout)
+      if (!res) { setCreating(false); return }
+      const json = await res.json()
+      setCreating(false)
+      if (json.success) {
+        setPortfolio(json.data)
+      } else {
+        setCreateError(json.error?.message || 'Auto-setup failed. Please try manually.')
+      }
+    }, 800)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, loading, importedRepos, repoStatusMap, portfolio, narrativeStatus])
+
+  // Auto-start step 2: generate narrative once portfolio is created by auto-start
+  useEffect(() => {
+    if (!autoStart) return
+    if (!portfolio) return
+    if (generating || narrativeStatus === 'completed') return
+    if (narrativeData) return
+    if (!autoStartedRef.current) return
+    handleGenerateNarrative()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, portfolio, generating, narrativeStatus, narrativeData])
+
+  // Merge AI skills + LinkedIn-only skills (deduped) — used in both preview and save
+  const mergedSkills = useMemo(() => {
+    const aiSkills   = narrativeData?.top_skills || []
+    const aiNames    = new Set(aiSkills.map(s => s.name.toLowerCase()))
+    const liOnly     = (linkedinData?.skills || [])
+      .filter(s => !aiNames.has(s.toLowerCase()))
+      .map(s => ({ name: s, category: 'Other', confidence: null, source: 'linkedin' }))
+    return [...aiSkills, ...liOnly]
+  }, [narrativeData, linkedinData])
 
   async function loadRepos() {
     setLoadError(null)
@@ -679,7 +745,8 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
         clearInterval(pollRef.current)
         pollRef.current = null
         setGenerating(false)
-        setNarrativeData(pJson.data.narrative)
+        // Attach repos so the useEffect fallback can seed editedProjects
+        setNarrativeData({ ...pJson.data.narrative, repos: pJson.data.repos })
         // Seed profile and linkedin from any previously saved data
         if (pJson.data.profile && Object.keys(pJson.data.profile).length > 0) {
           setProfile(p => ({ ...p, ...pJson.data.profile }))
@@ -765,10 +832,11 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            headline:  editedHeadline,
-            narrative: editedNarrative,
-            projects:  editedProjects,
+            headline:   editedHeadline,
+            narrative:  editedNarrative,
+            projects:   editedProjects,
             profile,
+            top_skills: mergedSkills,
           }),
         },
         onLogout
@@ -997,13 +1065,6 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
     const selectedRepos  = [...selected].map(id => importedRepos.find(r => r.id === id)).filter(Boolean)
     const liveUrl        = portfolio?.slug ? `${window.location.origin}/portfolio/${portfolio.slug}` : null
     const isPublished    = !!publicUrl || portfolio?.visibility === 'public'
-
-    const aiSkills      = narrativeData.top_skills || []
-    const aiNames       = new Set(aiSkills.map(s => s.name.toLowerCase()))
-    const linkedinOnlySkills = (linkedinData?.skills || [])
-      .filter(s => !aiNames.has(s.toLowerCase()))
-      .map(s => ({ name: s, category: 'Other', confidence: null, source: 'linkedin' }))
-    const mergedSkills  = [...aiSkills, ...linkedinOnlySkills]
 
     return (
       <div style={{
@@ -1336,9 +1397,9 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted }) {
                     </button>
                   )}
 
-                  {linkedinOnlySkills.length > 0 && (
+                  {mergedSkills.filter(s => s.source === 'linkedin').length > 0 && (
                     <p style={{ margin: '8px 0 0', fontSize: '11px', color: '#9ca3af' }}>
-                      {linkedinOnlySkills.length} skill{linkedinOnlySkills.length !== 1 ? 's' : ''} from LinkedIn
+                      {mergedSkills.filter(s => s.source === 'linkedin').length} skill{mergedSkills.filter(s => s.source === 'linkedin').length !== 1 ? 's' : ''} from LinkedIn
                       · <span style={{ display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
                           <span style={{ fontSize: '9px', fontWeight: '700', backgroundColor: '#0a66c2', color: '#fff', padding: '1px 4px', borderRadius: '3px' }}>in</span>
                           <span> = LinkedIn source</span>

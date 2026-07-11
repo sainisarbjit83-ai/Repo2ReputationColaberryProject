@@ -86,6 +86,7 @@ function Header({ onLogout }) {
   const [analyzingFullNames, setAnalyzingFullNames]   = useState(new Set())
   const [autoImporting, setAutoImporting]             = useState(false)
   const [autoImportError, setAutoImportError]         = useState(null)
+  const [cameFromAutoImport, setCameFromAutoImport]   = useState(false)
 
   useEffect(() => {
     fetchRepos()
@@ -253,6 +254,7 @@ function Header({ onLogout }) {
           )
           setAnalyzingFullNames(importedNames)
           await fetchImportedRepos()
+          setCameFromAutoImport(true)
           setActiveTab('portfolio')
         } else {
           setAutoImportError(importJson.error?.message || 'Auto-import failed.')
@@ -1004,6 +1006,7 @@ function Header({ onLogout }) {
           <PortfolioBuilder
             onLogout={onLogout}
             onGoToBrowse={() => handleTabSwitch('browse')}
+            autoStart={cameFromAutoImport}
             onRepoDeleted={(repoId, fullName) => {
               setImportedRepos(prev => prev.filter(r => r.id !== repoId))
               if (fullName) setAnalyzingFullNames(prev => { const n = new Set(prev); n.delete(fullName); return n })
