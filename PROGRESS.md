@@ -21,7 +21,7 @@
 
 ## Repository Phase
 
-**Current Phase: M20 — Multi-GitHub-Account Support**
+**Current Phase: M44 — Auto-Import Flow Complete**
 
 | Layer | Status |
 |-------|--------|
@@ -601,4 +601,138 @@ FRONTEND_URL=http://localhost:5173
 
 ---
 
-*Last updated: 2026-06-17 — M19: GitHub OAuth replaces email/password auth. M18: Deterministic top_skills.*
+---
+
+### M30–M36 — UI/UX Sprint (Skeleton Loading, Onboarding, Section Nav) *(2026-06-xx)*
+
+**Files modified:** `frontend/src/Skeleton.jsx` (new), `frontend/src/Header.jsx`, `frontend/src/PortfolioBuilder.jsx`, `frontend/src/PublicPortfolio.jsx`
+
+- **Skeleton loading states** — shimmer animation components (`RepoCardSkeleton`, `PortfolioBuilderSkeleton`, `PublicPortfolioSkeleton`) replace plain text spinners
+- **Onboarding stepper** — 3-step progress guide shown to first-time users (import → analyze → build); dismissed via localStorage
+- **Portfolio Builder section nav** — horizontal jump nav strip (LinkedIn / Profile / Headline / Summary / Skills / Projects / Media) with smooth scroll using `scrollContainerRef`
+- **View Live button** — green "🌐 View Live →" button in editor header; green when published, grey when draft
+- **Publish label** — "↗ Publish Portfolio" changes to "↗ Re-publish" after first publish
+
+---
+
+### M37 — Top Skills: LinkedIn Chips + Show All Toggle *(2026-07-xx)*
+
+**Files modified:** `frontend/src/PortfolioBuilder.jsx`
+
+- LinkedIn-sourced skills rendered with light blue chip (`#e8f3ff` bg, `#0a66c2` text) and `in` badge to distinguish from AI-detected skills
+- Skills capped at 15 with "Show all N skills ↓" / "Show less ↑" toggle
+- Footer shows count of LinkedIn-only skills merged in
+
+---
+
+### M38 — README Update: LinkedIn Skills Merge Documentation *(2026-07-xx)*
+
+**Files modified:** `README.md`
+
+- Documented LinkedIn PDF skill extraction and merge behaviour
+- Updated `.env` variables, API endpoint list, project structure
+
+---
+
+### M39 — View Live Button in Portfolio Builder *(2026-07-xx)*
+
+**Files modified:** `frontend/src/PortfolioBuilder.jsx`
+
+- "🌐 View Live →" button added to editor header bar
+- Green border/text when `portfolio.visibility === 'public'`; grey (disabled) when draft
+- `handleEditPortfolio` updated to refresh `portfolio.status` and `portfolio.visibility` so button state reflects DB truth
+
+---
+
+### M40 — Mobile-Responsive Public Portfolio *(2026-07-xx)*
+
+**Files modified:** `frontend/src/PublicPortfolio.jsx`
+
+- CSS `@media (max-width: 768px)` block added via inline `<style>` tag
+- Sidebar hides on mobile; mobile profile header (avatar, name, headline, location, skill chips) appears instead
+- Nav tabs become horizontally scrollable
+- PDF button shows `↓` icon on mobile, full text on desktop
+- Stats row (`pp-highlights`) stacks vertically on mobile
+
+---
+
+### M41 — Auto-Import Top 10 Repos on First Login *(2026-07-10)*
+
+**Files modified:** `backend/routes/repos.js`, `frontend/src/Header.jsx`
+
+**What changed:**
+- `POST /api/repos/auto-import` — new backend endpoint: checks if user has any imported repos; if not, fetches GitHub repos sorted by `pushed_at`, filters forks, returns top 10 `full_name` values
+- `mapGithubRepo()` updated to include `fork` and `pushedAt` fields
+- `fetchImportedReposAndMaybeAutoImport()` added to Header — called on mount; if no repos imported, auto-discovers top 10 and calls existing `/api/repos/import`
+- Animated "Setting up your portfolio…" loading screen shown during auto-import (pulsing progress bar)
+- `cameFromAutoImport` flag set after auto-import completes — passed as `autoStart` prop to PortfolioBuilder
+- Error banner shown if auto-import fails; manual Browse tab always available as fallback
+
+**Risk mitigation:** 10-repo cap prevents runaway OpenAI cost; forks filtered to keep only owner's original work
+
+---
+
+### M42 — Auto-Generate Portfolio After Auto-Import *(2026-07-10)*
+
+**Files modified:** `frontend/src/PortfolioBuilder.jsx`, `frontend/src/Header.jsx`
+
+**What changed:**
+- `PortfolioBuilder` accepts new `autoStart` prop
+- When `autoStart=true`, a `useEffect` fires after repos load: auto-selects all repos, sets title to "My Portfolio", creates portfolio via API, then triggers narrative generation — zero user clicks required
+- Repos with `completed` or `partial` analysis status are preferred; falls back to all imported repos if analyses still running
+- `autoStartedRef` (useRef) prevents double-triggering across re-renders
+- Second `useEffect` watches for `portfolio` to be set then auto-fires `handleGenerateNarrative()`
+- "Portfolio created" banner hidden in autoStart mode to reduce noise; generation message updated to "Building your portfolio…"
+
+---
+
+### M43 — LinkedIn Onboarding Prompt During Generation *(2026-07-10)*
+
+**Files modified:** `frontend/src/PortfolioBuilder.jsx`
+
+**What changed:**
+- During narrative generation in `autoStart` mode, a LinkedIn upload panel appears below the "Building your portfolio…" spinner
+- User can upload LinkedIn PDF while AI writes their summary — parallel tasks reduce total wait time
+- Uses same `handleLinkedinUpload` handler as Section 1 (LinkedIn PDF Import in editor)
+- Success state shows "✓ LinkedIn added — N skills imported"; error shown inline
+- Export instructions included: "Me → Settings → Data Privacy → Get a copy of your data"
+- LinkedIn skills are automatically merged when editor opens if PDF was uploaded during generation
+
+---
+
+### M44 — Repo Exclusion and Re-Analyze in Editor *(2026-07-10)*
+
+**Files modified:** `backend/routes/portfolios.js`, `frontend/src/PortfolioBuilder.jsx`
+
+**What changed:**
+- **Backend**: `PATCH /api/portfolios/:id` now accepts `repository_ids` array to update which repos power the portfolio without creating a new one
+- **Frontend**: "Included Repos" panel added above Project Summaries section in editor
+  - Each repo shows name, language, and analysis status badge (⏳ analyzing / ✓ / ✗ failed)
+  - **↺ Re-analyze** button triggers fresh deep analysis (grayed out if already running)
+  - **✕ Remove** button excludes repo from portfolio without deleting it from the account (grayed out if only 1 repo remains)
+  - Footer shows total included count with clarifying note
+- `handleExcludeRepo(repoId)` function added to PortfolioBuilder
+
+**Validation:** Build passes, no runtime errors observed. Manual test required.
+
+**Risks / Limitations:**
+- Excluding a repo does not regenerate the narrative — user must click Regenerate if they want the AI summary to reflect the change
+- No automated tests added
+
+---
+
+## Complete New First-Time User Flow (post M41–M44)
+
+1. User logs in via GitHub OAuth
+2. "Setting up your portfolio…" animated screen — silently imports top 10 non-fork repos
+3. Analysis queues immediately for all imported repos (basic + deep)
+4. "Building your portfolio…" screen — AI generates professional narrative automatically
+5. LinkedIn upload panel shown during step 4 — optional, parallel task
+6. Editor opens with all sections populated — user reviews and publishes
+7. Public portfolio live at `/portfolio/:slug`
+
+Returning users are unaffected — auto-import only runs when zero repos are imported.
+
+---
+
+*Last updated: 2026-07-10 — M41–M44: Auto-import flow, LinkedIn onboarding, repo exclusion in editor.*
