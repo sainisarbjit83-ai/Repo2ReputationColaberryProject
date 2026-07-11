@@ -1647,16 +1647,69 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
   if (portfolio) {
     return (
       <div style={{ maxWidth: '640px', margin: '0 auto', padding: '8px 0' }}>
-        <div style={{ padding: '10px 16px', backgroundColor: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', marginBottom: '20px', fontSize: '14px', color: '#166534', fontWeight: 'bold' }}>
-          ✓ Portfolio "{portfolio.title}" created
-        </div>
+        {!autoStart && (
+          <div style={{ padding: '10px 16px', backgroundColor: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', marginBottom: '20px', fontSize: '14px', color: '#166534', fontWeight: 'bold' }}>
+            ✓ Portfolio "{portfolio.title}" created
+          </div>
+        )}
 
         <div style={{ border: '1px solid #e5e7eb', borderRadius: '10px', padding: '24px', backgroundColor: 'white', textAlign: 'center' }}>
           {narrativeStatus === 'generating' ? (
             <>
               <div style={{ fontSize: '28px', marginBottom: '12px' }}>⏳</div>
-              <p style={{ margin: '0 0 6px', fontWeight: 'bold', fontSize: '15px', color: '#111827' }}>Generating narrative…</p>
-              <p style={{ margin: 0, fontSize: '13px', color: '#6b7280' }}>This takes about 10–20 seconds. Hang tight.</p>
+              <p style={{ margin: '0 0 6px', fontWeight: 'bold', fontSize: '15px', color: '#111827' }}>
+                {autoStart ? 'Building your portfolio…' : 'Generating narrative…'}
+              </p>
+              <p style={{ margin: '0', fontSize: '13px', color: '#6b7280' }}>
+                {autoStart ? 'AI is writing your professional summary. This takes about 20–30 seconds.' : 'This takes about 10–20 seconds. Hang tight.'}
+              </p>
+
+              {/* LinkedIn prompt — shown during auto-start generation only */}
+              {autoStart && (
+                <div style={{ marginTop: '28px', padding: '20px', backgroundColor: '#f8faff', border: '1px solid #c7d7f7', borderRadius: '10px', textAlign: 'left' }}>
+                  <p style={{ margin: '0 0 4px', fontSize: '13px', fontWeight: '700', color: '#0f172a' }}>
+                    While you wait — add LinkedIn (optional)
+                  </p>
+                  <p style={{ margin: '0 0 14px', fontSize: '12px', color: '#64748b' }}>
+                    Upload your LinkedIn PDF export to merge your work experience and skills into the portfolio.
+                  </p>
+                  {linkedinData ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 14px', backgroundColor: '#f0fdf4', border: '1px solid #86efac', borderRadius: '8px', fontSize: '13px', color: '#166534', fontWeight: '600' }}>
+                      ✓ LinkedIn added — {linkedinData.skills?.length || 0} skills imported
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        id="linkedin-pdf-onboarding"
+                        style={{ display: 'none' }}
+                        onChange={handleLinkedinUpload}
+                        disabled={linkedinUploading}
+                      />
+                      <label
+                        htmlFor="linkedin-pdf-onboarding"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '7px',
+                          padding: '9px 18px', borderRadius: '8px',
+                          border: '1px solid #0a66c2',
+                          backgroundColor: linkedinUploading ? '#f1f5f9' : '#e8f0fd',
+                          color: '#0a66c2', fontSize: '13px', fontWeight: '700',
+                          cursor: linkedinUploading ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        {linkedinUploading ? '⏳ Extracting…' : '🔗 Upload LinkedIn PDF'}
+                      </label>
+                      {linkedinError && (
+                        <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#dc2626' }}>{linkedinError}</p>
+                      )}
+                      <p style={{ margin: '10px 0 0', fontSize: '11px', color: '#9ca3af' }}>
+                        Export from LinkedIn → Me → Settings → Data Privacy → Get a copy of your data
+                      </p>
+                    </>
+                  )}
+                </div>
+              )}
             </>
           ) : (
             <>
