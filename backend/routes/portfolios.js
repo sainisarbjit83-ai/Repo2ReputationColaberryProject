@@ -597,13 +597,14 @@ router.post('/:id/generate-narrative', authMiddleware, async (req, res) => {
 router.patch('/:id', authMiddleware, async (req, res) => {
   const { id: userId } = req.user;
   const { id } = req.params;
-  const { headline, narrative, top_skills, projects, profile } = req.body;
+  const { headline, narrative, top_skills, projects, profile, repository_ids } = req.body;
 
   const hasNarrativeField = headline !== undefined || narrative !== undefined
     || top_skills !== undefined || projects !== undefined;
-  const hasProfileField = profile !== undefined;
+  const hasProfileField    = profile !== undefined;
+  const hasRepoIds         = repository_ids !== undefined;
 
-  if (!hasNarrativeField && !hasProfileField) {
+  if (!hasNarrativeField && !hasProfileField && !hasRepoIds) {
     return res.status(400).json({
       success: false,
       error: { code: 'VALIDATION_ERROR', message: 'Provide at least one field to update.' },
@@ -636,7 +637,13 @@ router.patch('/:id', authMiddleware, async (req, res) => {
       ? { ...(current?.profile || {}), ...profile }
       : (current?.profile || {});
 
-    const updatedContent = { ...current, narrative: updatedNarrative, profile: updatedProfile };
+    const updatedRepoIds = hasRepoIds ? repository_ids : (current?.repository_ids || []);
+    const updatedContent = {
+      ...current,
+      narrative:      updatedNarrative,
+      profile:        updatedProfile,
+      repository_ids: updatedRepoIds,
+    };
 
     await pool.query(
       `UPDATE portfolios SET content_json = $1, updated_at = NOW() WHERE id = $2`,
@@ -645,7 +652,7 @@ router.patch('/:id', authMiddleware, async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: { portfolioId: id, narrative: updatedNarrative, profile: updatedProfile },
+      data: { portfolioId: id, narrative: updatedNarrative, profile: updatedProfile, repository_ids: updatedRepoIds },
     });
   } catch (err) {
     console.error('[portfolios] patch error:', err.message);

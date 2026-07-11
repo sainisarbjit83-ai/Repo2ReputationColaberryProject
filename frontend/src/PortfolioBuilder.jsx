@@ -979,6 +979,28 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
     setPublicUrl(null)   // return to Step 3 editor
   }
 
+  async function handleExcludeRepo(repoId) {
+    if (!portfolio?.portfolioId) return
+    const currentIds = portfolio.repositoryIds || []
+    const newIds = currentIds.filter(id => id !== repoId)
+    if (newIds.length === 0) return // must keep at least 1
+
+    const res = await authFetch(
+      `${BASE_URL}/api/portfolios/${portfolio.portfolioId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repository_ids: newIds }),
+      },
+      onLogout
+    )
+    if (!res) return
+    const json = await res.json()
+    if (json.success) {
+      setPortfolio(prev => ({ ...prev, repositoryIds: newIds }))
+    }
+  }
+
   async function handleGenerateDescriptions() {
     if (!portfolio?.portfolioId || generatingDescs) return
     setGeneratingDescs(true)
@@ -1409,6 +1431,74 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
                 </EditorSection>
               )
             })()}
+
+            {/* Included Repos — manage which repos power this portfolio */}
+            {selectedRepos.length > 0 && (
+              <EditorSection id="pb-section-6a" number="" title="Included Repos" description="Remove repos that aren't relevant. Re-analyze if analysis looks outdated.">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {selectedRepos.map(repo => {
+                    const status = repoStatusMap[repo.id]?.status
+                    const isAnalyzing = ['queued', 'running', 'pending'].includes(status)
+                    return (
+                      <div key={repo.id} style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '8px 12px', borderRadius: '8px',
+                        border: '1px solid #e5e7eb', backgroundColor: '#f9fafb',
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                          <span style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {repo.name}
+                          </span>
+                          {repo.primary_language && (
+                            <span style={{ fontSize: '10px', color: '#64748b', flexShrink: 0 }}>{repo.primary_language}</span>
+                          )}
+                          {isAnalyzing && (
+                            <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: '600', flexShrink: 0 }}>⏳ analyzing</span>
+                          )}
+                          {status === 'completed' && (
+                            <span style={{ fontSize: '10px', color: '#166534', fontWeight: '600', flexShrink: 0 }}>✓</span>
+                          )}
+                          {status === 'failed' && (
+                            <span style={{ fontSize: '10px', color: '#dc2626', fontWeight: '600', flexShrink: 0 }}>✗ failed</span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px', flexShrink: 0, marginLeft: '8px' }}>
+                          <button
+                            onClick={() => handleRestartRepo(repo.id)}
+                            disabled={restarting === repo.id || isAnalyzing}
+                            title="Re-analyze this repo"
+                            style={{
+                              padding: '3px 8px', borderRadius: '5px', border: '1px solid #d1d5db',
+                              backgroundColor: 'white', fontSize: '11px', color: '#374151',
+                              cursor: restarting === repo.id || isAnalyzing ? 'not-allowed' : 'pointer',
+                              opacity: restarting === repo.id || isAnalyzing ? 0.5 : 1,
+                            }}
+                          >
+                            {restarting === repo.id ? '⏳' : '↺ Re-analyze'}
+                          </button>
+                          <button
+                            onClick={() => handleExcludeRepo(repo.id)}
+                            disabled={(portfolio.repositoryIds || []).length <= 1}
+                            title="Remove from portfolio"
+                            style={{
+                              padding: '3px 8px', borderRadius: '5px', border: '1px solid #fca5a5',
+                              backgroundColor: '#fff5f5', fontSize: '11px', color: '#dc2626',
+                              cursor: (portfolio.repositoryIds || []).length <= 1 ? 'not-allowed' : 'pointer',
+                              opacity: (portfolio.repositoryIds || []).length <= 1 ? 0.4 : 1,
+                            }}
+                          >
+                            ✕ Remove
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <p style={{ margin: '8px 0 0', fontSize: '11px', color: '#9ca3af' }}>
+                  {selectedRepos.length} repo{selectedRepos.length !== 1 ? 's' : ''} included · removing a repo won't delete it from your account
+                </p>
+              </EditorSection>
+            )}
 
             {/* 4. Project Summaries */}
             <EditorSection id="pb-section-6" number="6" title="Project Summaries" description="Edit the one-liner shown on each project card. Generate AI descriptions for detailed project breakdowns.">
