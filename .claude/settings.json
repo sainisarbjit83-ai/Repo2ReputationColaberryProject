@@ -150,7 +150,16 @@
       "Bash(curl -s -o /dev/null -w \"Backend: %{http_code}\" http://localhost:5000/)",
       "Bash(node -e \"const r = require\\('./routes/githubApp'\\); console.log\\(typeof r\\);\")",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5000/api/github-app/install)",
-      "Bash(curl -s -o /dev/null -w \"Frontend: %{http_code}\" http://localhost:5173/)"
+      "Bash(curl -s -o /dev/null -w \"Frontend: %{http_code}\" http://localhost:5173/)",
+      "PowerShell(git add README.md)",
+      "PowerShell(git commit -m \"M31c: README polish - fix broken demo link, rename Screenshots to Features, remove duplicate How It Works heading, add PORT to env example\")",
+      "PowerShell(git push origin master)",
+      "PowerShell(git add frontend/src/LoginForm.jsx)",
+      "PowerShell(git commit -m \"M34: Redesign login page - gradient panel, portfolio preview mockup, better feature bullets, card layout\")",
+      "Bash(rm \"c:\\\\Users\\\\sarbj\\\\Repo2Reputation_Colaberry_Project\\\\backend\\\\query_repo_temp.js\")",
+      "PowerShell(Start-Sleep -Seconds 3; try { $res = Invoke-WebRequest -Uri \"http://localhost:5000/api/health\" -TimeoutSec 5 -ErrorAction Stop; \"Health check: $\\($res.StatusCode\\)\" } catch { \"Health check failed: $_\" })",
+      "PowerShell(try { $res = Invoke-WebRequest -Uri \"http://localhost:5000\" -TimeoutSec 5 -ErrorAction Stop; \"Backend up: $\\($res.StatusCode\\)\" } catch { if \\($_ -match \"404|Cannot GET|403\"\\) { \"Backend is UP \\(no root route\\)\" } else { \"Backend check: $_\" } })",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='node.exe' AND ProcessId=34464\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\sarbj\\Repo2Reputation_Colaberry_Project\\backend",

@@ -32,6 +32,47 @@ app.get('/', (req, res) => {
   res.send('Backend is running');
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Server running on http://localhost:${PORT}`);
+
+  // Resume any analyses that were queued/running when the server last stopped
+  try {
+    const pool = require('./db/postgres');
+    const { runDeepAnalysisPipeline } = require('./services/deepAnalysisPipeline');
+    const { PHASE_IMPLS } = require('./services/deepAnalysisQueue');
+
+    const orphaned = await pool.query(
+      `SELECT da.id AS analysis_id, da.repository_id,
+              r.id, r.name, r.full_name, r.description, r.primary_language,
+              r.default_branch, r.topics, r.stars_count, r.forks_count, r.readme_content
+       FROM deep_analyses da
+       JOIN repositories r ON r.id = da.repository_id
+       WHERE da.status IN ('queued', 'running')
+       ORDER BY da.created_at ASC`
+    );
+
+    if (orphaned.rows.length > 0) {
+      console.log(`[startup] Resuming ${orphaned.rows.length} orphaned analysis job(s)…`);
+      // Reset any 'running' rows back to 'queued' so the pipeline can restart them cleanly
+      await pool.query(
+        `UPDATE deep_analyses SET status = 'queued' WHERE status = 'running'`
+      );
+      for (const row of orphaned.rows) {
+        const repoData = {
+          id: row.id, name: row.name, full_name: row.full_name,
+          description: row.description, primary_language: row.primary_language,
+          default_branch: row.default_branch, topics: row.topics,
+          stars_count: row.stars_count, forks_count: row.forks_count,
+          readme_content: row.readme_content,
+        };
+        setImmediate(() =>
+          runDeepAnalysisPipeline(row.analysis_id, repoData, PHASE_IMPLS).catch(err =>
+            console.error(`[startup] pipeline error for ${row.analysis_id}:`, err.message)
+          )
+        );
+      }
+    }
+  } catch (err) {
+    console.error('[startup] Failed to resume orphaned analyses:', err.message);
+  }
 });

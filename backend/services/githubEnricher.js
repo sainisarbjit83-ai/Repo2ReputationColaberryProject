@@ -190,6 +190,9 @@ function classifyContent(filePath) {
   // 7. Data — structured data files (JSON catches anything not already classified above)
   if (DATA_EXT.has(ext) || ext === '.json') return { contentType: 'data', extension: ext, languageHint: langHint };
 
+  // 7b. Jupyter notebooks — treated as analyzable source (contains code cells)
+  if (ext === '.ipynb') return { contentType: 'notebook', extension: ext, languageHint: 'Python' };
+
   // 8. Source code — known programming language extensions
   if (SOURCE_EXT.has(ext)) return { contentType: 'source_code', extension: ext, languageHint: langHint };
 

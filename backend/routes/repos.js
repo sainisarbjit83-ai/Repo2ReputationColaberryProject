@@ -246,6 +246,60 @@ router.post('/auto-import', authMiddleware, async (req, res) => {
   }
 });
 
+// POST /api/repos/auto-import-account — discover top N repos from a connected private GitHub account
+// Uses the account's OAuth token so private repos are included
+router.post('/auto-import-account', authMiddleware, async (req, res) => {
+  const { username, limit = 10 } = req.body;
+  const { id: userId } = req.user;
+  if (!username || typeof username !== 'string') {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'username is required.' } });
+  }
+  try {
+    const accounts = await getGithubAccounts(userId);
+    const account  = accounts.find(a => a.github_username.toLowerCase() === username.toLowerCase());
+    if (!account) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: `Account @${username} is not connected.` } });
+    }
+    const response = await axios.get(`${GITHUB_API}/user/repos`, {
+      headers: makeGithubHeaders(account.access_token),
+      params: { per_page: 100, sort: 'pushed', type: 'owner' },
+    });
+    const repoFullNames = response.data
+      .filter(r => !r.fork)
+      .slice(0, Math.min(Number(limit), 15))
+      .map(r => r.full_name);
+    return res.status(200).json({ success: true, data: { repoFullNames } });
+  } catch (err) {
+    console.error('[repos] auto-import-account error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to fetch repositories.' } });
+  }
+});
+
+// POST /api/repos/auto-import-public — discover top N non-fork repos from any public GitHub username
+router.post('/auto-import-public', authMiddleware, async (req, res) => {
+  const { username, limit = 5 } = req.body;
+  if (!username || typeof username !== 'string') {
+    return res.status(400).json({ success: false, error: { code: 'VALIDATION_ERROR', message: 'username is required.' } });
+  }
+  try {
+    const response = await axios.get(`${GITHUB_API}/users/${encodeURIComponent(username)}/repos`, {
+      headers: makeGithubHeaders(null),
+      params: { per_page: 30, sort: 'pushed', type: 'owner' },
+    });
+    const repoFullNames = response.data
+      .filter(r => !r.fork)
+      .slice(0, Math.min(Number(limit), 15))
+      .map(r => r.full_name);
+    return res.status(200).json({ success: true, data: { repoFullNames } });
+  } catch (err) {
+    if (err.response?.status === 404) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: `GitHub user @${username} not found.` } });
+    }
+    console.error('[repos] auto-import-public error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Failed to fetch public repositories.' } });
+  }
+});
+
 // GET /api/repos/imported — list repos already imported into the DB for this user
 router.get('/imported', authMiddleware, async (req, res) => {
   const { id: userId } = req.user;
@@ -413,6 +467,7 @@ router.post('/import', authMiddleware, async (req, res) => {
       try {
         const deepResult = await queueDeepAnalysis(repositoryId, userId);
         deepAnalysisId = deepResult?.analysisId ?? null;
+        if (!deepResult) console.warn('[repos] deep analysis not queued for', fullName, '— repo not found for userId', userId);
       } catch (deepErr) {
         console.error('[repos] deep analysis queue failed for', fullName, ':', deepErr.message);
       }

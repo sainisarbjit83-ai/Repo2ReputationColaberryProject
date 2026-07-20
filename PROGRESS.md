@@ -735,4 +735,133 @@ Returning users are unaffected — auto-import only runs when zero repos are imp
 
 ---
 
-*Last updated: 2026-07-10 — M41–M44: Auto-import flow, LinkedIn onboarding, repo exclusion in editor.*
+*Last updated: 2026-07-12 — M41–M45: Auto-import flow, LinkedIn onboarding, repo exclusion in editor, bug fixes, Jupyter notebook analysis.*
+
+---
+
+### M45 — Bug Fixes, Data & Analytics Tech Detection, Jupyter Notebook Analysis *(2026-07-12)*
+
+**Files modified:**
+- `backend/server.js`
+- `backend/routes/deepAnalysis.js`
+- `backend/routes/repos.js`
+- `backend/services/codeIntelligence.js`
+- `backend/services/githubEnricher.js`
+- `backend/services/intelligenceAgents.js`
+- `backend/services/techMaps.js`
+- `frontend/src/Header.jsx`
+- `frontend/src/PortfolioBuilder.jsx`
+
+**Bug Fix 1 — Orphaned analysis recovery on server restart:**
+- `setImmediate` jobs are lost when Node.js process exits. DB rows stay as `queued` but nothing processes them.
+- `backend/server.js`: on startup, queries `deep_analyses` for rows with `status IN ('queued', 'running')`, resets `running` → `queued`, then fires `setImmediate(() => runDeepAnalysisPipeline(...))` for each.
+- `backend/routes/deepAnalysis.js`: `/run` endpoint now re-kicks the pipeline for existing `queued` rows instead of returning early.
+- `backend/routes/repos.js`: Added warning log when silent deep analysis queue failure occurs.
+
+**Bug Fix 2 — "A unknown-powered software project" in card summaries:**
+- `dominantStack` was the string `"unknown"` (truthy), which bypassed the ternary null-check in template building.
+- `backend/services/intelligenceAgents.js` line ~376: now treats `"unknown"` string as null explicitly: `const dominantStack = (typeof v === 'string' && v !== 'unknown') ? v : null`. All downstream templates fall back to "well-engineered" language.
+
+**Bug Fix 3 — Portfolio Title input removed:**
+- `frontend/src/PortfolioBuilder.jsx`: Removed the Portfolio Title `<input>` div from Step 1 of portfolio creation. `handleCreate` now always uses `'My Portfolio'` as the default title.
+
+**Bug Fix 4 — Browse/Add More Repos page UI:**
+- `frontend/src/Header.jsx`:
+  - Tab renamed from "Browse GitHub Repos" → "Add More Repos"
+  - Tab button outline fixed (`outline-none` added to remove focus ring artifact)
+  - Top-right "Import" button removed
+  - Sticky bottom import bar added: appears when repos are selected, shows count + "Import N Repos →" button
+  - Avatar initial fix: `(repo.language || repo.name || 'R').slice(0, 2).toUpperCase()` prevents blank/undefined avatars
+
+**Bug Fix 5 — Removed "Included Repos" panel from portfolio editor:**
+- `frontend/src/PortfolioBuilder.jsx`: Removed the entire "Included Repos" EditorSection block that was added in M44. User confirmed it was not needed.
+
+**Feature — Data & Analytics technology detection:**
+- `backend/services/codeIntelligence.js`: Added "Data & Analytics Platforms" section to `TECH_PATTERNS` with patterns for: `microsoft-fabric`, `power-bi`, `azure-synapse`, `databricks`, `pyspark`, `dbt`, `medallion-architecture`. Added display names to `STACK_LABELS`.
+- `backend/services/techMaps.js`: Added all 7 new technologies to `TECH_CATEGORIES` (category: `'Data & Analytics'`) and `TECH_LABELS` (display names). Without `TECH_CATEGORIES` entries, detected technologies are silently dropped by the portfolio aggregation filter.
+
+**Feature — Jupyter Notebook (.ipynb) analysis support (ROOT CAUSE FIX):**
+- Root cause: `.ipynb` files were not in `SOURCE_EXT` → classified as `contentType: 'unknown'` by `githubEnricher.js`. `codeIntelligence.js` only analyzes files in `ANALYZABLE_CONTENT_TYPES` (excludes `unknown`) → Microsoft Fabric patterns had zero chance to match.
+- `backend/services/githubEnricher.js`: Added `.ipynb` as `notebook` content type (classified in `classifyContent()` before the `unknown` fallback, with `languageHint: 'Python'`).
+- `backend/services/codeIntelligence.js`: Added `'notebook'` to `ANALYZABLE_CONTENT_TYPES`. Jupyter notebook content (raw JSON containing code cells) is now passed through all tech pattern matchers.
+
+**Portfolio Builder UX — "Still analyzing" panel:**
+- `frontend/src/PortfolioBuilder.jsx`: Added panel above repo selection showing repos that aren't yet `completed/partial`, with per-repo status label and `▶ Analyze` / `✕ Remove` action buttons.
+- Added `▶ Analyze` button to the zero-analyzed-repos waiting screen.
+
+**Bug Fix 6 — Card Summary (oneLiner) blank in portfolio editor:**
+- `oneLiner` was never set when the AI narrative returned empty `hookSentence` for a repo, and "Generate AI Descriptions" preserves existing fields (including a blank `oneLiner`).
+- `frontend/src/PortfolioBuilder.jsx`: Added `seedOneLiner(p)` helper — if `p.oneLiner` is empty but `p.description` (AI long-form text) exists, extracts the first sentence (capped at 200 chars) as a fallback `oneLiner`.
+- Applied at all 3 project-loading points: after narrative generation, on `handleEditPortfolio` reload, and after "Generate AI Descriptions" response.
+- Field remains user-editable; seeding only fills blanks, never overwrites existing content.
+
+**Validation:**
+- Backend restarted and serving on port 5000.
+- Frontend hot-reloads automatically via Vite.
+- `.ipynb` fix requires re-analysis of affected repos to take effect. Use the `↺ Reanalyze` button in AnalysisPanel for repos containing Jupyter notebooks (e.g., `Retail-fabric-sales-analytics`), then regenerate the portfolio narrative.
+
+**Risks / Limitations:**
+- Re-analysis must be manually triggered for existing repos — old `code_intelligence_json` in `deep_analyses` does not change automatically.
+- `notebook` content type analysis matches on raw `.ipynb` JSON text; deeply nested cell content is still matched (JSON string representation contains the Python code), but complex import paths inside code cells depend on pattern specificity.
+- No automated tests added.
+
+---
+
+### M46 — Private GitHub Account Connect with Auto-Import *(2026-07-13)*
+
+**Files modified:**
+- `backend/routes/repos.js`
+- `frontend/src/Header.jsx`
+
+**Feature — Connect private GitHub account with auto-import:**
+
+User requested ability to add a second (private) GitHub account that auto-imports and auto-analyzes its top 10 repos, matching the experience of public account auto-import from M41.
+
+**Backend — `POST /api/repos/auto-import-account`:**
+- Accepts `{ username, limit }` in request body.
+- Looks up the connected GitHub account by username from `github_accounts` table (validates ownership).
+- Uses the account's stored OAuth token to call `GET /user/repos` (authenticated, sees private repos).
+- Filters out forks, slices to `min(limit, 15)`, returns `{ repoFullNames }`.
+- Added to `backend/routes/repos.js` at bottom, before module export.
+
+**Frontend — `Header.jsx`:**
+
+1. **`privateImporting` state** — tracks username currently being auto-imported (shows purple spinner banner).
+
+2. **`autoImportConnectedAccount(username)` function:**
+   - Called when `?connected=username` URL param is detected on page load (after OAuth redirect).
+   - Calls `POST /api/repos/auto-import-account` → `POST /api/repos/import` → refreshes imported repos.
+   - On success: sets `analyzingFullNames` (triggers analysis badges), shows import success banner.
+   - On failure: shows fallback connect banner with `@username connected`.
+   - Also refreshes connected accounts list and repo list at start.
+
+3. **Startup `useEffect` — `?connected=username` handling updated:**
+   - Previously only showed a text banner; now calls `autoImportConnectedAccount(username)`.
+   - `window.history.replaceState` clears the URL param before the async work starts.
+
+4. **"Connect Private Account" button card:**
+   - Added to the accounts row next to "Add public username" card.
+   - Styled with indigo dashed border, lock icon, subtitle "OAuth · auto-imports top 10 repos".
+   - Calls `connectGithubAccount()` which redirects to GitHub OAuth with `mode=connect`.
+   - On return, `?connected=username` is detected → `autoImportConnectedAccount` fires automatically.
+
+5. **Purple spinner banner** — shown during `privateImporting` state, purple to distinguish from public (indigo).
+
+**Flow end-to-end:**
+1. User clicks "Connect Private Account" → GitHub OAuth → redirect to `/?connected=username`
+2. Header detects param → calls `autoImportConnectedAccount(username)`
+3. Shows purple "Auto-importing top 10 repos from @username (public + private)…" banner
+4. Calls backend → gets top 10 non-fork repo full names using OAuth token
+5. Calls import endpoint → imports repos → fires analysis queue
+6. Shows green "N repos from @username imported — analysis starting" success banner
+7. Account card appears in accounts row (fetched via `fetchConnectedAccounts`)
+
+**Validation:**
+- Frontend changes hot-reload via Vite.
+- Backend requires restart to load new `auto-import-account` endpoint.
+- Existing `connectGithubAccount()` OAuth flow already worked; only the post-connect behavior was extended.
+
+**Risks / Limitations:**
+- Backend must be manually restarted to pick up the new endpoint.
+- If the OAuth token has expired for the connected account, the `GET /user/repos` call will fail with 401; the banner will fall back to a text-only connect banner.
+- No automated tests added for this flow.

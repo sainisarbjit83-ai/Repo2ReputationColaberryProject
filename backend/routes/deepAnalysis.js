@@ -122,7 +122,7 @@ router.post('/run', authMiddleware, async (req, res) => {
       });
     }
 
-    // Return the existing in-progress analysis rather than starting a duplicate
+    // Resume orphaned queued row (server may have restarted mid-queue)
     const existing = await pool.query(
       `SELECT id, status, analysis_version, legacy
        FROM deep_analyses
@@ -133,6 +133,14 @@ router.post('/run', authMiddleware, async (req, res) => {
 
     if (existing.rows[0]) {
       const e = existing.rows[0];
+      // If it's queued but no process is running it (server restart), re-kick pipeline
+      if (e.status === 'queued') {
+        setImmediate(() =>
+          runDeepAnalysisPipeline(e.id, repoData, PHASE_IMPLS).catch(err =>
+            console.error(`[deepAnalysis] resume pipeline error for ${e.id}:`, err.message),
+          ),
+        );
+      }
       return res.status(200).json({
         success: true,
         data: {

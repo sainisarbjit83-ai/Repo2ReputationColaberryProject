@@ -49,6 +49,7 @@ const ANALYZABLE_CONTENT_TYPES = new Set([
   'config',
   'infrastructure',
   'test',
+  'notebook',  // Jupyter .ipynb files
   'data',
   'documentation',
 ]);
@@ -1055,6 +1056,95 @@ const RULES = [
     // Stripe SDK instantiation or API surface
     test: f => /new\s+Stripe\s*\(|stripe\.paymentIntents|stripe\.customers|stripe\.webhooks/i.test(f.content),
   },
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // DATA & ANALYTICS PLATFORMS
+  // Cloud data platforms — detected via file paths, notebook content, imports.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // ── Microsoft Fabric ──────────────────────────────────────────────────────
+  {
+    domain: DOMAINS.DATABASE, technology: 'microsoft-fabric', framework: null,
+    architectureSignal: 'cloud_data_platform',
+    confidence: CONFIDENCE.IMPORT, matchType: 'import',
+    test: f => /import\s+sempy\.fabric|from\s+sempy\.fabric|notebookutils|mssparkutils/i.test(f.content),
+  },
+  {
+    domain: DOMAINS.DATABASE, technology: 'microsoft-fabric', framework: null,
+    architectureSignal: 'cloud_data_platform',
+    confidence: CONFIDENCE.CONTENT, matchType: 'content',
+    test: f => /microsoft[\s_-]?fabric|fabric[\s_-]?(lakehouse|warehouse|notebook|pipeline|dataflow)|OneLake|\.pbix/i.test(f.content),
+  },
+  {
+    domain: DOMAINS.DATABASE, technology: 'microsoft-fabric', framework: null,
+    architectureSignal: 'cloud_data_platform',
+    confidence: CONFIDENCE.PATH, matchType: 'path',
+    test: f => /fabric|lakehouse|\.SemanticModel|\.pbix/i.test(f.path),
+  },
+
+  // ── Power BI ──────────────────────────────────────────────────────────────
+  {
+    domain: DOMAINS.DATABASE, technology: 'power-bi', framework: null,
+    architectureSignal: 'business_intelligence',
+    confidence: CONFIDENCE.CONTENT, matchType: 'content',
+    test: f => /power[\s_-]?bi|powerbi|\.pbix|semantic[\s_-]?model|DAX[\s(]|CALCULATE\s*\(|RELATED\s*\(/i.test(f.content),
+  },
+  {
+    domain: DOMAINS.DATABASE, technology: 'power-bi', framework: null,
+    architectureSignal: 'business_intelligence',
+    confidence: CONFIDENCE.PATH, matchType: 'path',
+    test: f => /\.pbix|power[\s_-]?bi|semantic.model/i.test(f.path),
+  },
+
+  // ── Azure Synapse / Databricks ────────────────────────────────────────────
+  {
+    domain: DOMAINS.DATABASE, technology: 'azure-synapse', framework: null,
+    architectureSignal: 'cloud_data_platform',
+    confidence: CONFIDENCE.CONTENT, matchType: 'content',
+    test: f => /azure[\s_-]?synapse|synapse[\s_-]?analytics|sqlpool|dedicatedpool/i.test(f.content),
+  },
+  {
+    domain: DOMAINS.DATABASE, technology: 'databricks', framework: null,
+    architectureSignal: 'cloud_data_platform',
+    confidence: CONFIDENCE.IMPORT, matchType: 'import',
+    test: f => /from\s+databricks|import\s+databricks|dbutils\.|spark\.conf\.set|SparkSession/i.test(f.content),
+  },
+
+  // ── Apache Spark / PySpark ────────────────────────────────────────────────
+  {
+    domain: DOMAINS.DATABASE, technology: 'pyspark', framework: null,
+    architectureSignal: 'big_data_processing',
+    confidence: CONFIDENCE.IMPORT, matchType: 'import',
+    test: f => /from\s+pyspark|import\s+pyspark|SparkContext|SparkSession|pyspark\.sql/i.test(f.content),
+  },
+
+  // ── dbt ───────────────────────────────────────────────────────────────────
+  {
+    domain: DOMAINS.DATABASE, technology: 'dbt', framework: null,
+    architectureSignal: 'data_transformation',
+    confidence: CONFIDENCE.CONFIG, matchType: 'config',
+    test: f => /dbt_project\.yml|profiles\.yml/.test(f.path),
+  },
+  {
+    domain: DOMAINS.DATABASE, technology: 'dbt', framework: null,
+    architectureSignal: 'data_transformation',
+    confidence: CONFIDENCE.CONTENT, matchType: 'content',
+    test: f => /\{\{\s*ref\s*\(|dbt[\s_-]?core|dbt[\s_-]?cloud/i.test(f.content),
+  },
+
+  // ── Medallion Architecture ────────────────────────────────────────────────
+  {
+    domain: DOMAINS.DATABASE, technology: 'medallion-architecture', framework: null,
+    architectureSignal: 'data_architecture',
+    confidence: CONFIDENCE.PATH, matchType: 'path',
+    test: f => /bronze|silver|gold/.test(f.path),
+  },
+  {
+    domain: DOMAINS.DATABASE, technology: 'medallion-architecture', framework: null,
+    architectureSignal: 'data_architecture',
+    confidence: CONFIDENCE.CONTENT, matchType: 'content',
+    test: f => /medallion|bronze[\s_-]?(layer|table)|silver[\s_-]?(layer|table)|gold[\s_-]?(layer|table)/i.test(f.content),
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1114,7 +1204,14 @@ const STACK_LABELS = {
   'kubernetes':      'Kubernetes',
   'github-actions':  'GitHub Actions',
   'terraform':       'Terraform',
-  'stripe':          'Stripe',
+  'stripe':               'Stripe',
+  'microsoft-fabric':     'Microsoft Fabric',
+  'power-bi':             'Power BI',
+  'azure-synapse':        'Azure Synapse',
+  'databricks':           'Databricks',
+  'pyspark':              'PySpark',
+  'dbt':                  'dbt',
+  'medallion-architecture': 'Medallion Architecture',
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

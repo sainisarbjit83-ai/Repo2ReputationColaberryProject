@@ -434,6 +434,14 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
   const [editedHeadline,  setEditedHeadline]  = useState('')
   const [editedNarrative, setEditedNarrative] = useState('')
   const [editedProjects,  setEditedProjects]  = useState([])
+
+  // Fill empty oneLiner from first sentence of AI description so the card always shows something
+  function seedOneLiner(p) {
+    if (p.oneLiner) return p
+    if (!p.description) return p
+    const first = p.description.replace(/\n+/g, ' ').split(/\.\s+/)[0]
+    return { ...p, oneLiner: first.length > 200 ? first.slice(0, 197) + '…' : first }
+  }
   const [saving,    setSaving]    = useState(false)
   const [saved,     setSaved]     = useState(false)
   const [saveError, setSaveError] = useState(null)
@@ -472,6 +480,25 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
   useEffect(() => {
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [])
+
+  // Auto-trigger analysis for repos with no analysis record (status: 'pending')
+  // Runs once after initial load — covers public repos where queueDeepAnalysis silently failed
+  const autoTriggeredRef = useRef(false)
+  useEffect(() => {
+    if (loading) return
+    if (autoTriggeredRef.current) return
+    autoTriggeredRef.current = true
+    const pending = importedRepos.filter(r => repoStatusMap[r.id]?.status === 'pending')
+    if (pending.length === 0) return
+    pending.forEach(repo => {
+      authFetch(`${BASE_URL}/api/deep-analysis/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ repositoryId: repo.id }),
+      }, onLogout).catch(() => {})
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, importedRepos, repoStatusMap])
 
   // Auto-refresh every 5s while any repo analysis is still in progress
   const analysisInProgress = importedRepos.some(r =>
@@ -544,7 +571,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
       setEditedNarrative(narrativeData.narrative || '')
       // If narrative has no projects, seed from the portfolio's analyzed repos
       const projects = narrativeData.projects?.length > 0
-        ? narrativeData.projects
+        ? narrativeData.projects.map(seedOneLiner)
         : (narrativeData.repos || []).map(r => ({ repoName: r.name, oneLiner: r.analysis?.whatItDoes || r.description || '' }))
       setEditedProjects(projects)
       setSaved(false)
@@ -680,14 +707,15 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
   }
 
   async function handleCreate() {
-    if (!title.trim() || selected.size === 0 || creating) return
+    if (selected.size === 0 || creating) return
     setCreating(true)
     setCreateError(null)
+    const portfolioTitle = title.trim() || 'My Portfolio'
 
     const res = await authFetch(`${BASE_URL}/api/portfolios`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: title.trim(), repositoryIds: [...selected] }),
+      body: JSON.stringify({ title: portfolioTitle, repositoryIds: [...selected] }),
     }, onLogout)
 
     if (!res) { setCreating(false); return }
@@ -697,20 +725,23 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
 
     if (json.success) {
       setPortfolio(json.data)
+      // Auto-start narrative generation — no manual button click needed
+      handleGenerateNarrative(json.data)
     } else {
       setCreateError(json.error?.message || 'Failed to create portfolio.')
     }
   }
 
-  async function handleGenerateNarrative() {
-    if (!portfolio || generating) return
+  async function handleGenerateNarrative(portfolioOverride = null) {
+    const p = portfolioOverride || portfolio
+    if (!p || generating) return
     setGenerating(true)
     setGenerateError(null)
 
     let res
     try {
       res = await authFetch(
-        `${BASE_URL}/api/portfolios/${portfolio.portfolioId}/generate-narrative`,
+        `${BASE_URL}/api/portfolios/${p.portfolioId}/generate-narrative`,
         { method: 'POST' },
         onLogout
       )
@@ -733,7 +764,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
 
     // Poll until complete
     pollRef.current = setInterval(async () => {
-      const pRes = await authFetch(`${BASE_URL}/api/portfolios/${portfolio.portfolioId}`, {}, onLogout)
+      const pRes = await authFetch(`${BASE_URL}/api/portfolios/${p.portfolioId}`, {}, onLogout)
       if (!pRes) return
       const pJson = await pRes.json()
       if (!pJson.success) return
@@ -749,7 +780,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
         setNarrativeData({ ...pJson.data.narrative, repos: pJson.data.repos })
         // Seed profile and linkedin from any previously saved data
         if (pJson.data.profile && Object.keys(pJson.data.profile).length > 0) {
-          setProfile(p => ({ ...p, ...pJson.data.profile }))
+          setProfile(prev => ({ ...prev, ...pJson.data.profile }))
         }
         if (pJson.data.linkedin) {
           setLinkedinData(pJson.data.linkedin)
@@ -960,7 +991,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
       setEditedNarrative(saved.narrative.narrative || '')
       // Seed projects from narrative; fall back to portfolio repos if narrative has none
       const projects = saved.narrative.projects?.length > 0
-        ? saved.narrative.projects
+        ? saved.narrative.projects.map(seedOneLiner)
         : (saved.repos || []).map(r => ({ repoName: r.name, oneLiner: r.analysis?.whatItDoes || r.description || '' }))
       setEditedProjects(projects)
     }
@@ -1015,7 +1046,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
       if (!res) return
       const json = await res.json()
       if (json.success) {
-        setEditedProjects(json.data.projects)
+        setEditedProjects(json.data.projects.map(seedOneLiner))
         setDescsGenerated(true)
       } else {
         setDescsError(json.error?.message || 'Failed to generate descriptions.')
@@ -1431,74 +1462,6 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
                 </EditorSection>
               )
             })()}
-
-            {/* Included Repos — manage which repos power this portfolio */}
-            {selectedRepos.length > 0 && (
-              <EditorSection id="pb-section-6a" number="" title="Included Repos" description="Remove repos that aren't relevant. Re-analyze if analysis looks outdated.">
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {selectedRepos.map(repo => {
-                    const status = repoStatusMap[repo.id]?.status
-                    const isAnalyzing = ['queued', 'running', 'pending'].includes(status)
-                    return (
-                      <div key={repo.id} style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        padding: '8px 12px', borderRadius: '8px',
-                        border: '1px solid #e5e7eb', backgroundColor: '#f9fafb',
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                          <span style={{ fontSize: '13px', fontWeight: '600', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {repo.name}
-                          </span>
-                          {repo.primary_language && (
-                            <span style={{ fontSize: '10px', color: '#64748b', flexShrink: 0 }}>{repo.primary_language}</span>
-                          )}
-                          {isAnalyzing && (
-                            <span style={{ fontSize: '10px', color: '#7c3aed', fontWeight: '600', flexShrink: 0 }}>⏳ analyzing</span>
-                          )}
-                          {status === 'completed' && (
-                            <span style={{ fontSize: '10px', color: '#166534', fontWeight: '600', flexShrink: 0 }}>✓</span>
-                          )}
-                          {status === 'failed' && (
-                            <span style={{ fontSize: '10px', color: '#dc2626', fontWeight: '600', flexShrink: 0 }}>✗ failed</span>
-                          )}
-                        </div>
-                        <div style={{ display: 'flex', gap: '6px', flexShrink: 0, marginLeft: '8px' }}>
-                          <button
-                            onClick={() => handleRestartRepo(repo.id)}
-                            disabled={restarting === repo.id || isAnalyzing}
-                            title="Re-analyze this repo"
-                            style={{
-                              padding: '3px 8px', borderRadius: '5px', border: '1px solid #d1d5db',
-                              backgroundColor: 'white', fontSize: '11px', color: '#374151',
-                              cursor: restarting === repo.id || isAnalyzing ? 'not-allowed' : 'pointer',
-                              opacity: restarting === repo.id || isAnalyzing ? 0.5 : 1,
-                            }}
-                          >
-                            {restarting === repo.id ? '⏳' : '↺ Re-analyze'}
-                          </button>
-                          <button
-                            onClick={() => handleExcludeRepo(repo.id)}
-                            disabled={(portfolio.repositoryIds || []).length <= 1}
-                            title="Remove from portfolio"
-                            style={{
-                              padding: '3px 8px', borderRadius: '5px', border: '1px solid #fca5a5',
-                              backgroundColor: '#fff5f5', fontSize: '11px', color: '#dc2626',
-                              cursor: (portfolio.repositoryIds || []).length <= 1 ? 'not-allowed' : 'pointer',
-                              opacity: (portfolio.repositoryIds || []).length <= 1 ? 0.4 : 1,
-                            }}
-                          >
-                            ✕ Remove
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-                <p style={{ margin: '8px 0 0', fontSize: '11px', color: '#9ca3af' }}>
-                  {selectedRepos.length} repo{selectedRepos.length !== 1 ? 's' : ''} included · removing a repo won't delete it from your account
-                </p>
-              </EditorSection>
-            )}
 
             {/* 4. Project Summaries */}
             <EditorSection id="pb-section-6" number="6" title="Project Summaries" description="Edit the one-liner shown on each project card. Generate AI descriptions for detailed project breakdowns.">
@@ -1983,7 +1946,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
                         )}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                        {isFailed && (
+                        {(isFailed || (!isDone && st === 'pending')) && (
                           <button
                             onClick={() => handleRestartRepo(repo.id)}
                             disabled={restarting === repo.id}
@@ -1994,7 +1957,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
                               cursor: restarting === repo.id ? 'not-allowed' : 'pointer',
                             }}
                           >
-                            {restarting === repo.id ? '…' : '↺ Retry'}
+                            {restarting === repo.id ? '…' : isFailed ? '↺ Retry' : '▶ Analyze'}
                           </button>
                         )}
                         <span style={{
@@ -2036,22 +1999,59 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
         </div>
       ) : (
         <>
-          {/* Title input */}
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#374151', marginBottom: '6px' }}>
-              Portfolio Title
-            </label>
-            <input
-              type="text"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder="e.g. Full-Stack Developer Portfolio"
-              style={{
-                width: '100%', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '8px',
-                fontSize: '14px', color: '#111827', outline: 'none', boxSizing: 'border-box',
-              }}
-            />
-          </div>
+          {/* Pending repos not yet analyzed */}
+          {importedRepos.filter(r => !['completed','partial'].includes(analysisMap[r.id]?.status)).length > 0 && (
+            <div style={{ marginBottom: '16px', padding: '12px 14px', border: '1px solid #e5e7eb', borderRadius: '10px', backgroundColor: '#fafafa' }}>
+              <p style={{ margin: '0 0 10px', fontSize: '13px', fontWeight: '600', color: '#374151' }}>
+                Still analyzing ({importedRepos.filter(r => !['completed','partial'].includes(analysisMap[r.id]?.status)).length} repos)
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {importedRepos.filter(r => !['completed','partial'].includes(analysisMap[r.id]?.status)).map(repo => {
+                  const st = repoStatusMap[repo.id]?.status || 'pending'
+                  const isFailed = ['failed','cancelled'].includes(st)
+                  return (
+                    <div key={repo.id} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '11px', color: isFailed ? '#dc2626' : '#6b7280', flex: 1 }}>{repo.name}</span>
+                      <span style={{
+                        fontSize: '11px', fontWeight: '600', padding: '2px 8px', borderRadius: '8px',
+                        backgroundColor: isFailed ? '#fee2e2' : '#eff6ff',
+                        color: isFailed ? '#991b1b' : '#1d4ed8',
+                        border: `1px solid ${isFailed ? '#fca5a5' : '#bfdbfe'}`,
+                      }}>
+                        {isFailed ? (st === 'cancelled' ? 'Stopped' : 'Failed') : st === 'running' ? 'Analyzing…' : 'Queued'}
+                      </span>
+                      {!isFailed && (
+                        <button
+                          onClick={() => handleRestartRepo(repo.id)}
+                          disabled={restarting === repo.id}
+                          style={{
+                            padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '600',
+                            border: '1px solid #a5b4fc', background: '#eef2ff', color: '#4f46e5',
+                            cursor: restarting === repo.id ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          {restarting === repo.id ? '…' : '▶ Analyze'}
+                        </button>
+                      )}
+                      {isFailed && (
+                        <button
+                          onClick={() => handleDeleteRepo(repo.id)}
+                          disabled={deleting === repo.id}
+                          style={{
+                            padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '600',
+                            border: '1px solid #fca5a5', background: '#fff5f5', color: '#dc2626',
+                            cursor: deleting === repo.id ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          {deleting === repo.id ? '…' : '✕ Remove'}
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Repo checklist */}
           <div style={{ marginBottom: '20px' }}>

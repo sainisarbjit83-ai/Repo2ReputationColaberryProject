@@ -373,7 +373,7 @@ function buildSignals(chunkingData, repoMeta) {
   const ci2Domains = unique(Array.isArray(repoMeta.detectedDomains) ? repoMeta.detectedDomains : []);
 
   // ── Dominant stack and structural summary ─────────────────────────────────
-  const dominantStack      = typeof repoMeta.dominantStack === 'string' ? repoMeta.dominantStack : null;
+  const dominantStack      = (typeof repoMeta.dominantStack === 'string' && repoMeta.dominantStack !== 'unknown') ? repoMeta.dominantStack : null;
   const chunkRelationships = Array.isArray(chunkingData.chunkRelationships) ? chunkingData.chunkRelationships : [];
   const retrievalIndex     = (chunkingData.retrievalIndex && typeof chunkingData.retrievalIndex === 'object')
     ? chunkingData.retrievalIndex : {};

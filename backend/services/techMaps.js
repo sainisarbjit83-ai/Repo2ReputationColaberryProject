@@ -30,6 +30,14 @@ const TECH_CATEGORIES = {
   terraform: 'DevOps',
   // Integrations
   stripe: 'Integrations',
+  // Data & Analytics Platforms
+  'microsoft-fabric':       'Data & Analytics',
+  'power-bi':               'Data & Analytics',
+  'azure-synapse':          'Data & Analytics',
+  databricks:               'Data & Analytics',
+  pyspark:                  'Data & Analytics',
+  dbt:                      'Data & Analytics',
+  'medallion-architecture': 'Data & Analytics',
 };
 
 const TECH_LABELS = {
@@ -44,7 +52,14 @@ const TECH_LABELS = {
   tailwind: 'Tailwind CSS',         typeorm: 'TypeORM',
   dynamodb: 'DynamoDB',             elasticsearch: 'Elasticsearch',
   jwt: 'JWT',                       'rest-routes': 'REST API Design',
-  embeddings: 'Vector Embeddings',
+  embeddings:               'Vector Embeddings',
+  'microsoft-fabric':       'Microsoft Fabric',
+  'power-bi':               'Power BI',
+  'azure-synapse':          'Azure Synapse',
+  databricks:               'Databricks',
+  pyspark:                  'PySpark',
+  dbt:                      'dbt',
+  'medallion-architecture': 'Medallion Architecture',
 };
 
 module.exports = { TECH_CATEGORIES, TECH_LABELS };
