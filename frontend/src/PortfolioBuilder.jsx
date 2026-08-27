@@ -695,6 +695,26 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
     setAnalysisMap(newAnalysisMap)
     setRepoStatusMap(newStatusMap)
 
+    // Auto-select all newly-analyzed repos (only on initial load when nothing is selected yet)
+    const analyzedIds = Object.keys(newAnalysisMap).map(Number).filter(id =>
+      ['completed', 'partial'].includes(newAnalysisMap[id]?.status)
+    )
+    setSelected(prev => {
+      if (prev.size > 0) return prev // user already made a selection — don't override
+      return new Set(analyzedIds)
+    })
+
+    // Auto-populate repoMedia from README image URLs for repos that have no manual media set
+    setRepoMedia(prev => {
+      const next = { ...prev }
+      repos.forEach(repo => {
+        if (repo.readmeImageUrl && !next[repo.id]?.gifUrl) {
+          next[repo.id] = { gifUrl: repo.readmeImageUrl, autoDetected: true }
+        }
+      })
+      return next
+    })
+
     setLoading(false)
   }
 
@@ -1368,7 +1388,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
             </EditorSection>
 
             {/* 3. Headline */}
-            <EditorSection id="pb-section-3" number="3" title="Headline" description="Your professional headline used in the AI-generated narrative">
+            <EditorSection id="pb-section-3" number="3" title="Headline" description="Auto-generated from your repos — edit freely">
               <input
                 type="text"
                 value={editedHeadline}
@@ -1388,7 +1408,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
             </EditorSection>
 
             {/* 2. Professional Summary */}
-            <EditorSection id="pb-section-4" number="4" title="Professional Summary" description="Tell recruiters who you are and what you bring to the table">
+            <EditorSection id="pb-section-4" number="4" title="Professional Summary" description="Auto-generated from your repos — edit freely">
               <textarea
                 value={editedNarrative}
                 onChange={e => setEditedNarrative(e.target.value)}
@@ -1539,21 +1559,28 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
               </EditorSection>
 
             {/* 5. Project Media */}
-            <EditorSection id="pb-section-7" number="7" title="Project Media" description="Paste a GitHub file URL — auto-converted to a displayable media URL" defaultOpen={false}>
+            <EditorSection id="pb-section-7" number="7" title="Project Media" description="Auto-detected from README — or paste your own GitHub image/GIF URL" defaultOpen={false}>
               <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#6b7280', lineHeight: 1.6 }}>
-                Paste a GitHub file URL. Repo2Reputation will automatically convert it into a displayable media URL.
+                Images and GIFs are auto-detected from each repo's README. You can replace them by pasting a different GitHub file URL.
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {[...selected].map(repoId => {
                   const repo = importedRepos.find(r => r.id === repoId)
                   if (!repo) return null
+                  const isAutoDetected = repoMedia[repoId]?.autoDetected && repoMedia[repoId]?.gifUrl
                   return (
-                    <MediaInput
-                      key={repoId}
-                      repoName={repo.name}
-                      value={repoMedia[repoId]?.gifUrl || ''}
-                      onChange={converted => setRepoMedia(prev => ({ ...prev, [repoId]: { gifUrl: converted } }))}
-                    />
+                    <div key={repoId}>
+                      {isAutoDetected && (
+                        <p style={{ margin: '0 0 4px', fontSize: '10px', color: '#16a34a', fontWeight: '600' }}>
+                          ✓ Auto-detected from README
+                        </p>
+                      )}
+                      <MediaInput
+                        repoName={repo.name}
+                        value={repoMedia[repoId]?.gifUrl || ''}
+                        onChange={converted => setRepoMedia(prev => ({ ...prev, [repoId]: { gifUrl: converted } }))}
+                      />
+                    </div>
                   )
                 })}
               </div>
@@ -2055,9 +2082,30 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
 
           {/* Repo checklist */}
           <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#374151', marginBottom: '10px' }}>
-              Select Repositories ({selected.size} selected)
-            </label>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+              <label style={{ fontSize: '13px', fontWeight: 'bold', color: '#374151' }}>
+                Select Repositories ({selected.size} selected)
+              </label>
+              <button
+                onClick={() => {
+                  const allIds = new Set(analyzedRepos.map(r => r.id))
+                  const allSelected = analyzedRepos.every(r => selected.has(r.id))
+                  setSelected(allSelected ? new Set() : allIds)
+                }}
+                style={{
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  color: analyzedRepos.every(r => selected.has(r.id)) ? '#6b7280' : '#4f46e5',
+                  background: analyzedRepos.every(r => selected.has(r.id)) ? '#f3f4f6' : '#eef2ff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '4px 12px',
+                  cursor: 'pointer',
+                }}
+              >
+                {analyzedRepos.every(r => selected.has(r.id)) ? 'Deselect All' : 'Select All'}
+              </button>
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {analyzedRepos.map(repo => {
                 const isChecked = selected.has(repo.id)
@@ -2124,17 +2172,27 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
 
           <button
             onClick={handleCreate}
-            disabled={creating}
+            disabled={creating || selected.size === 0}
             style={{
               width: '100%', padding: '12px', borderRadius: '10px', border: 'none',
-              backgroundColor: creating ? '#a5b4fc' : '#4f46e5',
+              background: creating || selected.size === 0
+                ? '#a5b4fc'
+                : 'linear-gradient(135deg, #4f46e5, #7c3aed)',
               color: 'white', fontWeight: 'bold', fontSize: '15px',
-              cursor: creating ? 'not-allowed' : 'pointer',
-              transition: 'background-color 0.15s',
+              cursor: (creating || selected.size === 0) ? 'not-allowed' : 'pointer',
+              transition: 'opacity 0.15s',
+              boxShadow: selected.size > 0 && !creating ? '0 4px 14px rgba(79,70,229,0.35)' : 'none',
             }}
           >
-            {creating ? 'Creating…' : `Create Portfolio with ${selected.size} Repo${selected.size !== 1 ? 's' : ''}`}
+            {creating
+              ? 'Setting up…'
+              : selected.size === 0
+                ? 'Select at least one repo'
+                : `✨ Generate AI Portfolio — ${selected.size} Repo${selected.size !== 1 ? 's' : ''}`}
           </button>
+          <p style={{ margin: '8px 0 0', fontSize: '11px', color: '#9ca3af', textAlign: 'center' }}>
+            AI will automatically write your professional headline and summary based on the selected repos
+          </p>
         </>
       )}
     </div>

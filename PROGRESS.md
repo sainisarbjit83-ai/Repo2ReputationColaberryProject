@@ -865,3 +865,28 @@ User requested ability to add a second (private) GitHub account that auto-import
 - Backend must be manually restarted to pick up the new endpoint.
 - If the OAuth token has expired for the connected account, the `GET /user/repos` call will fail with 401; the banner will fall back to a text-only connect banner.
 - No automated tests added for this flow.
+
+---
+
+### M47 — Portfolio Builder UX: Auto-Select Repos + AI Generation Clarity *(2026-08-27)*
+
+**Files modified:**
+- `frontend/src/PortfolioBuilder.jsx`
+
+**What changed:**
+
+1. **Auto-select all analyzed repos on load** — `loadRepos()` now seeds `selected` with all analyzed (completed/partial) repo IDs when the component first loads with no prior selection. The user arrives at the Portfolio Builder with all repos pre-checked, requiring zero manual selection to proceed.
+
+2. **Generate button renamed and styled** — Changed from `"Create Portfolio with N Repos"` to `"✨ Generate AI Portfolio — N Repos"` with a gradient background (indigo→violet). The button is disabled (with clear label) when no repos are selected. Added a helper line below: "AI will automatically write your professional headline and summary based on the selected repos."
+
+3. **"AI Generated" badges on Headline and Summary** — Both `EditorSection` items (Headline #3, Summary #4) now show a purple `✨ AI Generated` pill badge with "from your selected repos" subtext, making it immediately clear that these fields are auto-filled by AI and editable.
+
+**Purpose:** The user wants to understand that picking repos and clicking the generate button is all that's needed — the AI automatically produces the headline and professional summary from repo analysis. These changes make the automatic behavior explicit and self-documenting in the UI.
+
+**Validation:**
+- Frontend hot-reloads via Vite (no backend changes — frontend only).
+- No backend changes required.
+
+**Risks / Limitations:**
+- Auto-select seeds on first load only (`prev.size > 0` guard prevents overriding manual deselections).
+- No automated tests added.

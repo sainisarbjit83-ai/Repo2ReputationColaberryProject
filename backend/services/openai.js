@@ -90,13 +90,30 @@ The repository data is background research only. Extract what the developer know
 - A concise professional title, NOT a sentence
 - Maximum 60–80 characters
 - LinkedIn-style title case, pipe separators where appropriate
-- Role type and technology domains only
+- CRITICAL: Derive the role accurately from BOTH the tech stack AND what the developer builds.
+
+STEP 1 — Determine the engineering scope:
+  * If Core Technologies includes a frontend framework (React, Vue, Angular, Next.js) AND a backend framework (Node.js, Express, FastAPI, Django) AND a database → this person is FULL-STACK. Use "Full-Stack" in the role.
+  * If only backend + DB (no frontend framework) → "Backend Engineer"
+  * If only frontend → "Frontend Engineer"
+  * If Business Domain includes "Data Analytics", "Business Intelligence", or tools like Power BI, Microsoft Fabric, DAX, Tableau → include "Data" or "Analytics" in the role or subtitle
+
+STEP 2 — Layer in the domain specialization after the role:
+  * AI integration present → prefix with "AI" (e.g., "AI Full-Stack Engineer") or add to subtitle
+  * Data analytics present alongside full-stack → "Full-Stack & Analytics Engineer" or "Software & Data Engineer"
+  * Multiple domains → combine them naturally in the subtitle after the pipe
+
+STEP 3 — Format cleanly:
+  * [Seniority] [Role] | [Domain Specialization] & [Domain Specialization]
+  * Examples:
+      "AI Full-Stack Engineer | Web Applications & Business Intelligence"
+      "Full-Stack AI Developer | React, Node.js & Data Analytics"
+      "Data Analyst | Power BI, Python & Business Intelligence"
+      "AI Engineer | LLM Integration & Intelligent Automation"
+      "Backend Engineer | APIs, Microservices & Cloud Infrastructure"
+      "Full-Stack Engineer | AI-Powered Web Applications & Analytics"
+
 - NEVER: project names, repo names, "I build...", first-person sentences
-- Examples:
-    "Full-Stack Engineer | AI, APIs & Automation"
-    "AI & Full-Stack Developer"
-    "Backend & AI Engineer | Python, Node.js & React"
-    "Software Engineer | AI-Powered Applications"
 
 === NARRATIVE RULES ===
 - 150–250 words. Hard cap: 250 words.
@@ -128,7 +145,7 @@ I approach software development by focusing on clean architecture, thoughtful sy
 - career_signals: score 1–5 per domain, only include score >= 2: AI Engineering, Backend Engineering, System Design, Frontend Engineering, DevOps, Security, Data Engineering
 
 PROHIBITED PHRASES (reject if present):
-"strong software engineering skills" / "demonstrates strong" / "passionate about" / "solid foundation" / any repo or project name in headline or narrative
+"strong software engineering skills" / "demonstrates strong" / "passionate about" / "solid foundation" / any repo or project name in headline or narrative / "semantic boundaries" / "semantic chunking" / "inference engine" / "pipeline phase" / "confidence score" / "maturity score" / "phase" / "chunking" / "orchestration layer" / "polyglot stack"
 
 Return ONLY valid JSON with this exact structure:
 {
@@ -147,7 +164,7 @@ Return ONLY valid JSON with this exact structure:
   ]
 }`;
 
-function buildNarrativeUserPrompt(analyses) {
+function buildNarrativeUserPrompt(analyses, linkedinProfile = null) {
   const bulletList = arr => (Array.isArray(arr) ? arr : []).map(x => `  - ${x}`).join('\n') || '  - None';
 
   // Build a scrubber that strips every known repo name from a string.
@@ -200,17 +217,62 @@ function buildNarrativeUserPrompt(analyses) {
     if (res?.suggestedTitle) roleSet.add(res.suggestedTitle);
   });
 
+  // LinkedIn profile signals — highest priority for headline generation
+  const linkedinSection = (() => {
+    if (!linkedinProfile) return '';
+    const parts = [];
+    if (linkedinProfile.headline) {
+      // Derive a concise version of the LinkedIn headline for the 80-char limit
+      const li = linkedinProfile.headline;
+      // Extract the role portion (last pipe segment is usually the title)
+      const segments = li.split('|').map(s => s.trim()).filter(Boolean);
+      const roleHint = segments[segments.length - 1] || li; // e.g. "AI Architect"
+      parts.push(`MANDATORY HEADLINE RULE: The user's actual professional title is "${roleHint}" (from LinkedIn). You MUST use "${roleHint}" as the role in the headline. Do NOT use "Full-Stack Engineer" or any other role.`);
+      parts.push(`Full LinkedIn headline for reference: ${li}`);
+    }
+    if (linkedinProfile.name)     parts.push(`Name: ${linkedinProfile.name}`);
+    if (linkedinProfile.experience?.length) {
+      const latest = linkedinProfile.experience[0];
+      parts.push(`Most Recent Role: ${latest.role} at ${latest.company}`);
+    }
+    return parts.length ? `\n=== LINKEDIN PROFILE — MANDATORY OVERRIDES ===\n${parts.join('\n')}\n` : '';
+  })();
+
+  // Detect full-stack scope from the actual technology list
+  const FRONTEND_FRAMEWORKS = new Set(['React', 'Vue', 'Angular', 'Next.js', 'Svelte', 'Nuxt.js', 'Remix', 'Astro'])
+  const BACKEND_FRAMEWORKS  = new Set(['Node.js', 'Express', 'FastAPI', 'Django', 'Flask', 'NestJS', 'Spring', 'Laravel', 'Rails', 'Koa', 'Hapi'])
+  const DATA_TOOLS          = new Set(['Power BI', 'Microsoft Fabric', 'Tableau', 'DAX', 'Looker', 'dbt', 'Spark', 'Airflow', 'BigQuery', 'Snowflake', 'Databricks'])
+  const techNames = [...techMap.keys()]
+  const hasFrontend  = techNames.some(t => FRONTEND_FRAMEWORKS.has(t))
+  const hasBackend   = techNames.some(t => BACKEND_FRAMEWORKS.has(t))
+  const hasDatabase  = [...techMap.values()].some(t => t.category === 'Database')
+  const hasDataTools = techNames.some(t => DATA_TOOLS.has(t))
+  const hasAI        = techNames.some(t => ['OpenAI', 'LangChain', 'Anthropic', 'LlamaIndex', 'Ollama'].includes(t))
+
+  // Build a MANDATORY ROLE OVERRIDE that GPT cannot ignore
+  const stackOverride = (() => {
+    const parts = []
+    if (hasFrontend && hasBackend) {
+      parts.push(`MANDATORY: This developer has BOTH a frontend framework (${techNames.filter(t => FRONTEND_FRAMEWORKS.has(t)).join(', ')}) AND a backend framework (${techNames.filter(t => BACKEND_FRAMEWORKS.has(t)).join(', ')}) in their stack. They are FULL-STACK. The headline MUST include "Full-Stack" in the role — NOT "Backend Engineer" alone.`)
+    }
+    if (hasAI) parts.push(`AI/ML integration is present (OpenAI or similar). Prefix the role with "AI" — e.g., "AI Full-Stack Engineer".`)
+    if (hasDataTools) parts.push(`Data/analytics tools are present (${techNames.filter(t => DATA_TOOLS.has(t)).join(', ')}). Include a data/analytics component in the subtitle — e.g., "| Web Applications & Business Intelligence".`)
+    return parts.length
+      ? `\n=== MANDATORY ROLE OVERRIDE (highest priority — overrides Role Signals below) ===\n${parts.join('\n')}\n`
+      : ''
+  })()
+
   const narrativeContext = `=== DEVELOPER CAPABILITY PROFILE ===
 This section contains NO repository names. Use ONLY this section to write the "headline" and "narrative" fields.
 Synthesize these signals into a cohesive first-person developer bio. Do NOT describe individual projects.
-
+${linkedinSection}${stackOverride}
 Core Technologies:
 ${techList}
 
 Engineering Strengths:
 ${bulletList([...strengthSet].slice(0, 15))}
 
-Role Signals:
+Role Signals (informational — the MANDATORY ROLE OVERRIDE above takes precedence):
 ${bulletList([...roleSet])}
 
 Business Domains:
@@ -239,13 +301,13 @@ ${projectRows}`;
   return `${narrativeContext}\n\n${projectContext}`;
 }
 
-async function generatePortfolioNarrative(analyses) {
+async function generatePortfolioNarrative(analyses, linkedinProfile = null) {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o-mini',
     response_format: { type: 'json_object' },
     messages: [
       { role: 'system', content: NARRATIVE_SYSTEM_PROMPT },
-      { role: 'user',   content: buildNarrativeUserPrompt(analyses) },
+      { role: 'user',   content: buildNarrativeUserPrompt(analyses, linkedinProfile) },
     ],
     temperature: 0.5,
     max_tokens: 2000,

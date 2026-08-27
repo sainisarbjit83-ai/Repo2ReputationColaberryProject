@@ -300,6 +300,42 @@ router.post('/auto-import-public', authMiddleware, async (req, res) => {
   }
 });
 
+// Extract the first image/GIF URL from README markdown content
+function extractReadmeMediaUrl(readmeContent, fullName) {
+  if (!readmeContent) return null;
+
+  const SUPPORTED = /\.(gif|png|jpg|jpeg|webp)(\?[^\s)">]*)?$/i;
+
+  // 1. Markdown image syntax: ![alt](url)
+  const mdImages = [...readmeContent.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)]
+    .map(m => m[1].trim().split(/\s+/)[0]); // strip optional title
+
+  // 2. HTML img tags: <img src="url"
+  const htmlImages = [...readmeContent.matchAll(/<img[^>]+src=["']([^"']+)["']/gi)]
+    .map(m => m[1].trim());
+
+  for (const url of [...mdImages, ...htmlImages]) {
+    if (!url || url.startsWith('data:')) continue;
+
+    // Convert relative paths to raw GitHub URLs
+    let resolved = url;
+    if (!resolved.startsWith('http')) {
+      if (!fullName) continue;
+      const branch = 'main'; // assume main; raw URL will 404 gracefully if wrong
+      resolved = `https://raw.githubusercontent.com/${fullName}/${branch}/${resolved.replace(/^\.?\//, '')}`;
+    }
+
+    // Convert GitHub blob viewer URLs to raw URLs
+    resolved = resolved
+      .replace('https://github.com/', 'https://raw.githubusercontent.com/')
+      .replace('/blob/', '/');
+
+    if (SUPPORTED.test(resolved)) return resolved;
+  }
+
+  return null;
+}
+
 // GET /api/repos/imported — list repos already imported into the DB for this user
 router.get('/imported', authMiddleware, async (req, res) => {
   const { id: userId } = req.user;
@@ -311,7 +347,8 @@ router.get('/imported', authMiddleware, async (req, res) => {
     const [rows, countRow] = await Promise.all([
       pool.query(
         `SELECT id, name, full_name, description, primary_language, stars_count,
-                forks_count, topics, sync_status, imported_at, repo_updated_at
+                forks_count, topics, sync_status, imported_at, repo_updated_at,
+                readme_content
          FROM repositories
          WHERE user_id = $1
          ORDER BY imported_at DESC
@@ -321,9 +358,15 @@ router.get('/imported', authMiddleware, async (req, res) => {
       pool.query('SELECT COUNT(*) FROM repositories WHERE user_id = $1', [userId]),
     ]);
 
+    const data = rows.rows.map(repo => {
+      const readmeImageUrl = extractReadmeMediaUrl(repo.readme_content, repo.full_name);
+      const { readme_content, ...rest } = repo; // don't send full README to frontend
+      return { ...rest, readmeImageUrl };
+    });
+
     return res.status(200).json({
       success: true,
-      data: rows.rows,
+      data,
       meta: { page, limit, total: parseInt(countRow.rows[0].count) },
     });
   } catch (err) {

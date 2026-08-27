@@ -533,10 +533,13 @@ router.post('/:id/generate-narrative', authMiddleware, async (req, res) => {
       intelligence: r.intelligence_json || null,
     }));
 
+    // Pass LinkedIn profile so AI uses the real headline instead of inferring from code
+    const linkedinProfile = portfolio.content_json?.linkedin || null;
+
     // Run generation in background — non-blocking
     setImmediate(async () => {
       try {
-        const result = await generatePortfolioNarrative(analyses);
+        const result = await generatePortfolioNarrative(analyses, linkedinProfile);
 
         // Override AI top_skills with deterministic aggregation from code_intelligence_json
         const techMap = new Map();
