@@ -890,3 +890,31 @@ User requested ability to add a second (private) GitHub account that auto-import
 **Risks / Limitations:**
 - Auto-select seeds on first load only (`prev.size > 0` guard prevents overriding manual deselections).
 - No automated tests added.
+
+---
+
+### M48 — Certifications Section in Portfolio *(2026-08-27)*
+
+**Files modified:**
+- `backend/services/openai.js` — `LINKEDIN_EXTRACT_PROMPT`
+- `frontend/src/PublicPortfolio.jsx`
+- `frontend/src/PortfolioBuilder.jsx`
+
+**What changed:**
+
+1. **LinkedIn extraction extended** — Added `certifications` array to `LINKEDIN_EXTRACT_PROMPT`. GPT now parses `name`, `issuer`, `issuedDate`, `expiryDate` from the LinkedIn PDF Licenses & Certifications section.
+
+2. **Public portfolio Certifications section** — Added a new Certifications block after Education in the Experience tab. Each certification displays as a card with a gold badge icon (🏅), cert name, issuer in amber, and issued/expiry dates. Uses the same tab layout as Experience/Education but with a card-grid pattern instead of a timeline.
+
+3. **PortfolioBuilder LinkedIn badge** — Added a gold `🏅 N Certifications` chip in the LinkedIn imported data badge row, alongside the existing Experience / Education / Skills chips.
+
+**Purpose:** User wanted to show professional certifications (e.g. Microsoft SQL Server BI Certificate) on their public portfolio alongside experience and education.
+
+**Validation:**
+- User must re-upload LinkedIn PDF for `certifications` to be extracted with the new prompt.
+- Backend restart required to pick up updated `LINKEDIN_EXTRACT_PROMPT`.
+- No automated tests added.
+
+**Risks / Limitations:**
+- Certifications section only appears if `linkedin.certifications?.length > 0` — no fallback UI.
+- Some LinkedIn PDFs may not list certifications in a format GPT can parse cleanly.

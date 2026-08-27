@@ -436,6 +436,14 @@ Return ONLY valid JSON with this exact structure:
       "endYear": "Year or null"
     }
   ],
+  "certifications": [
+    {
+      "name": "Certification or course name",
+      "issuer": "Issuing organization or platform (e.g. Microsoft, Coursera, AWS)",
+      "issuedDate": "Month Year or Year or null",
+      "expiryDate": "Month Year or Year or null (only if expiry is shown)"
+    }
+  ],
   "skills": ["skill1", "skill2"]
 }`;
 

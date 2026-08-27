@@ -1281,6 +1281,11 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
                         {linkedinData.education.length} Education {linkedinData.education.length === 1 ? 'entry' : 'entries'}
                       </span>
                     )}
+                    {linkedinData.certifications?.length > 0 && (
+                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#fef9c3', color: '#854d0e' }}>
+                        🏅 {linkedinData.certifications.length} {linkedinData.certifications.length === 1 ? 'Certification' : 'Certifications'}
+                      </span>
+                    )}
                     {linkedinData.skills?.length > 0 && (
                       <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#f3e8ff', color: '#6b21a8' }}>
                         {linkedinData.skills.length} Skills

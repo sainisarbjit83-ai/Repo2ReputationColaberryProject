@@ -80,7 +80,7 @@ No manual writing required. Everything is grounded in evidence from your actual 
 | **Auto-Import on Connect** | When a new account is connected, top 10 repos are automatically imported and analyzed |
 | **AI Deep Analysis** | 6-phase background pipeline: file classification → code intelligence → semantic chunking → inference → business value → portfolio signals |
 | **Portfolio Builder** | AI generates your professional headline and summary from repo analysis — no manual writing |
-| **LinkedIn PDF Import** | Upload your LinkedIn PDF to auto-fill name, headline, location, email, experience, and skills |
+| **LinkedIn PDF Import** | Upload your LinkedIn PDF to auto-fill name, headline, location, email, experience, education, certifications, and skills |
 | **README Media Auto-Detection** | Project images and GIFs are automatically extracted from each repo's README |
 | **Public Portfolio URL** | One click to publish a shareable profile at `/portfolio/<slug>` |
 | **PDF Resume Download** | Puppeteer-rendered resume from the same data, downloadable by anyone |
@@ -554,7 +554,8 @@ npm run dev
     "name": "Jane Smith",
     "headline": "AI Engineer | OpenAI",
     "experience": [{ "role": "...", "company": "...", "startDate": "Jan 2022", "endDate": "Present" }],
-    "education": [...],
+    "education": [{ "degree": "...", "institution": "...", "startYear": 2018, "endYear": 2022 }],
+    "certifications": [{ "name": "...", "issuer": "...", "issuedDate": "Jan 2023", "expiryDate": null }],
     "skills": ["Python", "React", "OpenAI"]
   },
   "repo_media": {
@@ -615,9 +616,10 @@ npm run dev
 2. Export PDF from LinkedIn: Profile → More → Save to PDF
 3. Upload PDF → backend parses with pdfjs-dist → GPT extracts structured data
 4. Auto-fills: name, headline, location, email, LinkedIn URL
-5. Experience + education saved to content_json.linkedin
+5. Experience, education, and certifications saved to content_json.linkedin
 6. Skills from LinkedIn merged with AI-detected repo skills (deduplicated)
 7. LinkedIn headline used as optional override signal for AI narrative
+8. Certifications appear as a timeline section on the public portfolio (after Education)
 ```
 
 ---
