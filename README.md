@@ -86,15 +86,6 @@ No manual writing required. Everything is grounded in evidence from your actual 
 | **PDF Resume Download** | Puppeteer-rendered resume from the same data, downloadable by anyone |
 | **Regenerate Any Time** | Re-run AI generation after adding repos or uploading LinkedIn data |
 
-### For Recruiters
-
-| Feature | Description |
-|---|---|
-| **Developer Search** | Search by skill, technology, or domain across all public portfolios |
-| **Engineering Depth** | Portfolio surfaces architecture signals, not just a repo list |
-| **Always-Visible Summary** | First paragraph of project description always shown; click to expand full analysis |
-| **Skills by Category** | Technologies grouped into Frontend, Backend, AI, DevOps, Database — scannable at a glance |
-| **PDF Resume** | One-click download of a formatted resume for any public portfolio |
 
 ---
 
