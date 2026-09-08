@@ -686,7 +686,7 @@ Currently covers `src/utils/mediaUrl.js` — GitHub URL conversion and media val
 
 | Area | Limitation |
 |---|---|
-| **GITHUB_TOKEN expiry** | The server-side GitHub token used for API enrichment (Phase 1) expires. When it does, deep analysis fails with a 401 in `phase_errors_json`. Fix: generate a new classic PAT at `github.com/settings/tokens` and update `.env`. |
+| **GITHUB_TOKEN expiry** | The server-side GitHub token used for API enrichment (Phase 1) can expire if set with an expiry date. If deep analysis fails with a 401 in `phase_errors_json`, generate a new classic PAT at `github.com/settings/tokens` (select "No expiration") and update `.env`. |
 | **README media detection** | Auto-detects only images in standard markdown (`![alt](url)`) and HTML `<img>` tags. Repos with no README or no images in the README will show empty media fields. |
 | **Puppeteer in some cloud environments** | PDF generation requires headless Chromium. Some hosting platforms (Render free tier, Railway) may need a custom buildpack or Chromium layer. |
 | **No backend test coverage** | All AI service calls, route handlers, and the deep analysis pipeline have zero automated test coverage. |
