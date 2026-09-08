@@ -476,7 +476,7 @@ function buildResumeHtml({
   const patterns      = allPatterns(repos);
   const skillsByCategory = aggregateSkills(repos, topSkills, patterns);
   const projectBlocks = buildProjectBlocks(projects, repos);
-  const summary       = buildPersonSummary(repos, experience, careerSignals);
+  const summary       = narrative || buildPersonSummary(repos, experience, careerSignals);
 
   const displayName     = profile.fullName || title || 'Developer Portfolio';
   const displayRoleLine = headline || profile.headline || buildProfessionalHeadline(repos, careerSignals, experience, null);
