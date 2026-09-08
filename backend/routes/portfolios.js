@@ -353,7 +353,7 @@ router.get('/public/:slug/pdf', async (req, res) => {
 
     const pdfBuffer = await generatePortfolioPdf({
       title:          portfolio.title,
-      headline:       narrative.headline   || null,
+      headline:       profile.headline     || narrative.headline || null,
       narrative:      narrative.narrative  || null,
       topSkills:      narrative.top_skills || [],
       projects:       narrative.projects   || [],
