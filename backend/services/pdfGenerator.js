@@ -479,7 +479,7 @@ function buildResumeHtml({
   const summary       = buildPersonSummary(repos, experience, careerSignals);
 
   const displayName     = profile.fullName || title || 'Developer Portfolio';
-  const displayRoleLine = buildProfessionalHeadline(repos, careerSignals, experience, profile.headline || headline);
+  const displayRoleLine = headline || profile.headline || buildProfessionalHeadline(repos, careerSignals, experience, null);
 
   const contactParts = [
     profile.email       ? esc(profile.email) : null,
