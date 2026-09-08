@@ -4,7 +4,7 @@
 
 ### Transform GitHub repositories into AI-powered recruiter portfolios — automatically.
 
-![Repo2Reputation Demo](docs/images/demo.gif)
+![Repo2Reputation](docs/images/repo2reputation-workflow.png)
 
 > Connect GitHub → AI analyzes your repos → Portfolio with headline, summary & projects generated instantly
 
