@@ -475,6 +475,7 @@ Rules:
 Return ONLY valid JSON with this exact structure:
 {
   "name": "Full name or null",
+  "headline": "Current job title or professional headline (e.g. 'Senior Data Analyst', 'Full-Stack Engineer') or null",
   "email": "Email address or null",
   "phone": "Phone number or null",
   "location": "City, Country or null",

@@ -1005,6 +1005,7 @@ router.post('/:id/resume-pdf', authMiddleware, upload.single('pdf'), async (req,
       certifications: existingLinkedin.certifications?.length ? existingLinkedin.certifications : (extracted.certifications || []),
       skills:         existingLinkedin.skills?.length         ? existingLinkedin.skills         : (extracted.skills         || []),
       name:           existingLinkedin.name     || extracted.name     || null,
+      headline:       existingLinkedin.headline || extracted.headline || null,
       email:          existingLinkedin.email    || extracted.email    || null,
       location:       existingLinkedin.location || extracted.location || null,
     };

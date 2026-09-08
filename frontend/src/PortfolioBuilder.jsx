@@ -1041,6 +1041,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
       setProfile(p => ({
         ...p,
         fullName: p.fullName || json.data.name     || '',
+        headline: p.headline || json.data.headline || '',
         email:    p.email    || json.data.email    || '',
         location: p.location || json.data.location || '',
       }))
