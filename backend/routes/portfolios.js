@@ -993,13 +993,29 @@ router.post('/:id/resume-pdf', authMiddleware, upload.single('pdf'), async (req,
   }
 
   try {
-    const updated = { ...portfolioRow.content_json, resume: extracted };
+    const existing = portfolioRow.content_json || {};
+    const existingLinkedin = existing.linkedin || {};
+
+    // Merge resume experience/education/certifications/skills into linkedin
+    // only for fields that are currently empty — LinkedIn data takes priority
+    const mergedLinkedin = {
+      ...existingLinkedin,
+      experience:     existingLinkedin.experience?.length     ? existingLinkedin.experience     : (extracted.experience     || []),
+      education:      existingLinkedin.education?.length      ? existingLinkedin.education      : (extracted.education      || []),
+      certifications: existingLinkedin.certifications?.length ? existingLinkedin.certifications : (extracted.certifications || []),
+      skills:         existingLinkedin.skills?.length         ? existingLinkedin.skills         : (extracted.skills         || []),
+      name:           existingLinkedin.name     || extracted.name     || null,
+      email:          existingLinkedin.email    || extracted.email    || null,
+      location:       existingLinkedin.location || extracted.location || null,
+    };
+
+    const updated = { ...existing, resume: extracted, linkedin: mergedLinkedin };
     await pool.query(
       `UPDATE portfolios SET content_json = $1, updated_at = NOW() WHERE id = $2`,
       [JSON.stringify(updated), id]
     );
     console.log(`[resume-pdf] saved for portfolio ${id}`);
-    return res.status(200).json({ success: true, data: extracted });
+    return res.status(200).json({ success: true, data: extracted, linkedin: mergedLinkedin });
   } catch (err) {
     console.error('[resume-pdf] DB save error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'SAVE_FAILED', message: 'Extraction succeeded but failed to save.' } });

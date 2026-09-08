@@ -1031,11 +1031,15 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
     const json = await res.json()
     if (json.success) {
       setResumeData(json.data)
+      // Update linkedinData with merged result from backend so experience/education/certs display correctly
+      if (json.linkedin) {
+        setLinkedinData(json.linkedin)
+      }
       // Auto-fill profile fields if empty
       setProfile(p => ({
         ...p,
-        fullName: p.fullName || json.data.name  || '',
-        email:    p.email    || json.data.email  || '',
+        fullName: p.fullName || json.data.name     || '',
+        email:    p.email    || json.data.email    || '',
         location: p.location || json.data.location || '',
       }))
     } else {
