@@ -463,6 +463,66 @@ async function extractLinkedInProfile(rawText) {
   return JSON.parse(response.choices[0].message.content);
 }
 
+const RESUME_EXTRACT_PROMPT = `You are a resume parser. Extract structured professional data from the resume text provided.
+
+Rules:
+- Only extract what is clearly present in the text — do not invent or assume details
+- summary: extract the professional summary, about, or objective section verbatim (clean up formatting artifacts)
+- experience bullets: limit to the 3 most impactful per role
+- skills: limit to 15 most relevant
+- If a section is absent, use null or empty array []
+
+Return ONLY valid JSON with this exact structure:
+{
+  "name": "Full name or null",
+  "email": "Email address or null",
+  "phone": "Phone number or null",
+  "location": "City, Country or null",
+  "summary": "Professional summary / about / objective text or null",
+  "experience": [
+    {
+      "company": "Company name",
+      "role": "Job title",
+      "startDate": "Month Year or Year",
+      "endDate": "Month Year or Year or Present",
+      "location": "Location or null",
+      "bullets": ["Achievement or responsibility sentence"]
+    }
+  ],
+  "education": [
+    {
+      "institution": "School or university name",
+      "degree": "Degree and field of study",
+      "startYear": "Year or null",
+      "endYear": "Year or null"
+    }
+  ],
+  "certifications": [
+    {
+      "name": "Certification or course name",
+      "issuer": "Issuing organization or platform",
+      "issuedDate": "Month Year or Year or null",
+      "expiryDate": "Month Year or Year or null"
+    }
+  ],
+  "skills": ["skill1", "skill2"]
+}`;
+
+async function extractResumeData(rawText) {
+  const text = rawText.slice(0, 8000);
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o-mini',
+    response_format: { type: 'json_object' },
+    messages: [
+      { role: 'system', content: RESUME_EXTRACT_PROMPT },
+      { role: 'user',   content: text },
+    ],
+    temperature: 0.1,
+    max_tokens: 1800,
+  });
+  return JSON.parse(response.choices[0].message.content);
+}
+
 const PROJECT_DESCRIPTION_SYSTEM_PROMPT = `You are a technical writer creating a professional project description for a developer portfolio.
 
 Based on the structured signals provided, write exactly 2–4 prose paragraphs:
@@ -511,4 +571,4 @@ async function generateProjectDescription({
   return typeof raw.description === 'string' ? raw.description : '';
 }
 
-module.exports = { analyzeRepository, generatePortfolioNarrative, generateReadme, extractLinkedInProfile, generateProjectDescription };
+module.exports = { analyzeRepository, generatePortfolioNarrative, generateReadme, extractLinkedInProfile, extractResumeData, generateProjectDescription };

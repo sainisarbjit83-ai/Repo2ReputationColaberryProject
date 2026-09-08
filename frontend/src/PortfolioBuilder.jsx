@@ -393,13 +393,14 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
   const scrollContainerRef = useRef(null)
 
   const EDITOR_NAV = [
-    { id: 'pb-section-1', label: 'LinkedIn' },
-    { id: 'pb-section-2', label: 'Profile' },
-    { id: 'pb-section-3', label: 'Headline' },
-    { id: 'pb-section-4', label: 'Summary' },
-    { id: 'pb-section-5', label: 'Skills' },
-    { id: 'pb-section-6', label: 'Projects' },
-    { id: 'pb-section-7', label: 'Media' },
+    { id: 'pb-section-1',      label: 'LinkedIn' },
+    { id: 'pb-section-resume', label: 'Resume' },
+    { id: 'pb-section-2',      label: 'Profile' },
+    { id: 'pb-section-3',      label: 'Headline' },
+    { id: 'pb-section-4',      label: 'Summary' },
+    { id: 'pb-section-5',      label: 'Skills' },
+    { id: 'pb-section-6',      label: 'Projects' },
+    { id: 'pb-section-7',      label: 'Media' },
   ]
 
   function scrollToSection(sectionId) {
@@ -456,6 +457,11 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
   const [linkedinUploading, setLinkedinUploading] = useState(false)
   const [linkedinData,      setLinkedinData]      = useState(null)
   const [linkedinError,     setLinkedinError]     = useState(null)
+
+  // Step 3 — Resume PDF import
+  const [resumeUploading, setResumeUploading] = useState(false)
+  const [resumeData,      setResumeData]      = useState(null)
+  const [resumeError,     setResumeError]     = useState(null)
 
   // Step 3 — project descriptions
   const [generatingDescs, setGeneratingDescs] = useState(false)
@@ -996,6 +1002,47 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
     }
   }
 
+  async function handleResumeUpload(e) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!portfolio?.portfolioId) {
+      setResumeError('Generate your portfolio first, then upload your resume.')
+      return
+    }
+    setResumeUploading(true)
+    setResumeError(null)
+
+    const formData = new FormData()
+    formData.append('pdf', file)
+
+    let res
+    try {
+      res = await authFetch(`${BASE_URL}/api/portfolios/${portfolio.portfolioId}/resume-pdf`, { method: 'POST', body: formData }, onLogout)
+    } catch {
+      setResumeError('Network error — is the backend running?')
+      setResumeUploading(false)
+      return
+    }
+
+    setResumeUploading(false)
+    e.target.value = ''
+
+    if (!res) return
+    const json = await res.json()
+    if (json.success) {
+      setResumeData(json.data)
+      // Auto-fill profile fields if empty
+      setProfile(p => ({
+        ...p,
+        fullName: p.fullName || json.data.name  || '',
+        email:    p.email    || json.data.email  || '',
+        location: p.location || json.data.location || '',
+      }))
+    } else {
+      setResumeError(json.error?.message || 'Failed to process PDF.')
+    }
+  }
+
   async function handleEditPortfolio() {
     if (!portfolio?.portfolioId) return
     // Reload saved portfolio data so the editor has up-to-date profile + narrative
@@ -1307,8 +1354,109 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
               )}
             </EditorSection>
 
+            {/* Resume PDF Import */}
+            <EditorSection id="pb-section-resume" number="2" title="Import from Resume PDF" description="Upload any resume PDF to extract your professional summary, experience & skills" defaultOpen={!resumeData}>
+
+              {!resumeData ? (
+                <div>
+                  <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#6b7280', lineHeight: 1.6 }}>
+                    Upload a PDF resume to extract your <strong>professional summary</strong>, experience, skills, and certifications automatically.
+                  </p>
+                  <input
+                    type="file"
+                    accept=".pdf,application/pdf"
+                    id="resume-pdf-upload"
+                    style={{ display: 'none' }}
+                    onChange={handleResumeUpload}
+                    disabled={resumeUploading}
+                  />
+                  <label
+                    htmlFor="resume-pdf-upload"
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '7px',
+                      padding: '9px 18px', borderRadius: '8px',
+                      border: '1px solid #059669', backgroundColor: resumeUploading ? '#f1f5f9' : '#ecfdf5',
+                      color: '#059669', fontSize: '13px', fontWeight: '700',
+                      cursor: resumeUploading ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    {resumeUploading ? '⏳ Extracting…' : '📄 Upload Resume PDF'}
+                  </label>
+                  {resumeError && (
+                    <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#dc2626' }}>{resumeError}</p>
+                  )}
+                </div>
+              ) : (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#166534' }}>✓ Resume imported</span>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <input
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        id="resume-pdf-reupload"
+                        style={{ display: 'none' }}
+                        onChange={handleResumeUpload}
+                        disabled={resumeUploading}
+                      />
+                      <label htmlFor="resume-pdf-reupload" style={{ fontSize: '11px', color: '#059669', cursor: 'pointer', fontWeight: '600' }}>
+                        {resumeUploading ? '⏳…' : '🔄 Re-upload'}
+                      </label>
+                      <button onClick={() => setResumeData(null)} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '11px', cursor: 'pointer', padding: 0 }}>
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Summary preview + use button */}
+                  {resumeData.summary && (
+                    <div style={{ marginBottom: '12px', padding: '12px 14px', borderRadius: '8px', backgroundColor: '#f8faff', border: '1px solid #c7d7f7' }}>
+                      <p style={{ margin: '0 0 8px', fontSize: '11px', fontWeight: '700', color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Extracted Summary</p>
+                      <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#374151', lineHeight: 1.6 }}>
+                        {resumeData.summary.length > 300 ? resumeData.summary.slice(0, 297) + '…' : resumeData.summary}
+                      </p>
+                      <button
+                        onClick={() => setEditedNarrative(resumeData.summary)}
+                        style={{
+                          padding: '6px 14px', borderRadius: '6px', border: 'none',
+                          backgroundColor: '#4f46e5', color: 'white',
+                          fontSize: '12px', fontWeight: '700', cursor: 'pointer',
+                        }}
+                      >
+                        Use this summary
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Data badges */}
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    {resumeData.name && (
+                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#dcfce7', color: '#166534' }}>
+                        👤 {resumeData.name}
+                      </span>
+                    )}
+                    {resumeData.experience?.length > 0 && (
+                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#dbeafe', color: '#1e40af' }}>
+                        {resumeData.experience.length} Experience {resumeData.experience.length === 1 ? 'entry' : 'entries'}
+                      </span>
+                    )}
+                    {resumeData.skills?.length > 0 && (
+                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#f3e8ff', color: '#6b21a8' }}>
+                        {resumeData.skills.length} Skills
+                      </span>
+                    )}
+                    {resumeData.certifications?.length > 0 && (
+                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#fef9c3', color: '#854d0e' }}>
+                        🏅 {resumeData.certifications.length} {resumeData.certifications.length === 1 ? 'Certification' : 'Certifications'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+            </EditorSection>
+
             {/* 0. Personal Profile — auto-filled by LinkedIn above */}
-            <EditorSection id="pb-section-2" number="2" title="Personal Profile" description="Your identity — shown at the top of your public portfolio">
+            <EditorSection id="pb-section-2" number="3" title="Personal Profile" description="Your identity — shown at the top of your public portfolio">
 
               {/* Profile photo upload */}
               <div style={{ marginBottom: '14px' }}>
@@ -1393,7 +1541,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
             </EditorSection>
 
             {/* 3. Headline */}
-            <EditorSection id="pb-section-3" number="3" title="Headline" description="Auto-generated from your repos — edit freely">
+            <EditorSection id="pb-section-3" number="4" title="Headline" description="Auto-generated from your repos — edit freely">
               <input
                 type="text"
                 value={editedHeadline}
@@ -1413,7 +1561,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
             </EditorSection>
 
             {/* 2. Professional Summary */}
-            <EditorSection id="pb-section-4" number="4" title="Professional Summary" description="Auto-generated from your repos — edit freely">
+            <EditorSection id="pb-section-4" number="5" title="Professional Summary" description="Auto-generated from your repos — edit freely">
               <textarea
                 value={editedNarrative}
                 onChange={e => setEditedNarrative(e.target.value)}
@@ -1438,7 +1586,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
               const visibleSkills = showAllSkills ? mergedSkills : mergedSkills.slice(0, SKILL_LIMIT)
               const hiddenCount   = mergedSkills.length - SKILL_LIMIT
               return (
-                <EditorSection id="pb-section-5" number="5" title="Top Skills" description="AI-extracted from repos + skills imported from LinkedIn PDF">
+                <EditorSection id="pb-section-5" number="6" title="Top Skills" description="AI-extracted from repos + skills imported from LinkedIn PDF">
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px' }}>
                     {visibleSkills.map((skill, i) => {
                       const isLinkedIn = skill.source === 'linkedin'
@@ -1489,7 +1637,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
             })()}
 
             {/* 4. Project Summaries */}
-            <EditorSection id="pb-section-6" number="6" title="Project Summaries" description="Edit the one-liner shown on each project card. Generate AI descriptions for detailed project breakdowns.">
+            <EditorSection id="pb-section-6" number="7" title="Project Summaries" description="Edit the one-liner shown on each project card. Generate AI descriptions for detailed project breakdowns.">
                 <div style={{ marginBottom: '14px' }}>
                   <button
                     onClick={handleGenerateDescriptions}
@@ -1564,7 +1712,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
               </EditorSection>
 
             {/* 5. Project Media */}
-            <EditorSection id="pb-section-7" number="7" title="Project Media" description="Auto-detected from README — or paste your own GitHub image/GIF URL" defaultOpen={false}>
+            <EditorSection id="pb-section-7" number="8" title="Project Media" description="Auto-detected from README — or paste your own GitHub image/GIF URL" defaultOpen={false}>
               <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#6b7280', lineHeight: 1.6 }}>
                 Images and GIFs are auto-detected from each repo's README. You can replace them by pasting a different GitHub file URL.
               </p>

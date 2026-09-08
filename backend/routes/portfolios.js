@@ -3,7 +3,7 @@ const multer    = require('multer');
 const pdfjsLib  = require('pdfjs-dist/legacy/build/pdf.js');
 const pool = require('../db/postgres');
 const authMiddleware = require('../middleware/authMiddleware');
-const { generatePortfolioNarrative, extractLinkedInProfile, generateProjectDescription } = require('../services/openai');
+const { generatePortfolioNarrative, extractLinkedInProfile, extractResumeData, generateProjectDescription } = require('../services/openai');
 const { generatePortfolioPdf } = require('../services/pdfGenerator');
 const { TECH_CATEGORIES, TECH_LABELS } = require('../services/techMaps');
 
@@ -935,6 +935,74 @@ router.post('/:id/linkedin-pdf', authMiddleware, upload.single('pdf'), async (re
   } catch (err) {
     console.error('[linkedin-pdf] DB save error:', err.message);
     return res.status(500).json({ success: false, error: { code: 'SAVE_FAILED', message: 'Extraction succeeded but failed to save. Please try again.' } });
+  }
+});
+
+// POST /api/portfolios/:id/resume-pdf — upload any resume PDF, extract and store data
+router.post('/:id/resume-pdf', authMiddleware, upload.single('pdf'), async (req, res) => {
+  const { id: userId } = req.user;
+  const { id } = req.params;
+
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: { code: 'NO_FILE', message: 'No PDF file uploaded.' } });
+  }
+
+  const allowedTypes = ['application/pdf', 'application/octet-stream', 'binary/octet-stream'];
+  const originalName = req.file.originalname?.toLowerCase() || '';
+  const isPdf = allowedTypes.includes(req.file.mimetype) || originalName.endsWith('.pdf');
+  if (!isPdf) {
+    return res.status(400).json({ success: false, error: { code: 'INVALID_FILE', message: 'Please upload a PDF file.' } });
+  }
+
+  let portfolioRow;
+  try {
+    const result = await pool.query(
+      `SELECT id, content_json FROM portfolios WHERE id = $1 AND user_id = $2`,
+      [id, userId]
+    );
+    if (!result.rows[0]) {
+      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Portfolio not found.' } });
+    }
+    portfolioRow = result.rows[0];
+  } catch (err) {
+    console.error('[resume-pdf] DB load error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'SERVER_ERROR', message: 'Database error loading portfolio.' } });
+  }
+
+  let rawText = '';
+  try {
+    console.log('[resume-pdf] parsing PDF — size:', req.file.size, 'bytes');
+    rawText = (await extractPdfText(req.file.buffer)).trim();
+    console.log('[resume-pdf] extracted text length:', rawText.length, 'chars');
+  } catch (err) {
+    console.error('[resume-pdf] pdf extraction error:', err.message);
+    return res.status(422).json({ success: false, error: { code: 'PARSE_FAILED', message: 'Could not read the PDF.' } });
+  }
+
+  if (rawText.length < 50) {
+    return res.status(422).json({ success: false, error: { code: 'EMPTY_PDF', message: 'No readable text found in this PDF.' } });
+  }
+
+  let extracted;
+  try {
+    extracted = await extractResumeData(rawText);
+    console.log('[resume-pdf] extraction done — summary length:', extracted?.summary?.length ?? 0);
+  } catch (err) {
+    console.error('[resume-pdf] OpenAI extraction error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'EXTRACTION_FAILED', message: 'AI extraction failed. Please try again.' } });
+  }
+
+  try {
+    const updated = { ...portfolioRow.content_json, resume: extracted };
+    await pool.query(
+      `UPDATE portfolios SET content_json = $1, updated_at = NOW() WHERE id = $2`,
+      [JSON.stringify(updated), id]
+    );
+    console.log(`[resume-pdf] saved for portfolio ${id}`);
+    return res.status(200).json({ success: true, data: extracted });
+  } catch (err) {
+    console.error('[resume-pdf] DB save error:', err.message);
+    return res.status(500).json({ success: false, error: { code: 'SAVE_FAILED', message: 'Extraction succeeded but failed to save.' } });
   }
 });
 
