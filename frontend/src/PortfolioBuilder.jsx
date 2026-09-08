@@ -393,14 +393,13 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
   const scrollContainerRef = useRef(null)
 
   const EDITOR_NAV = [
-    { id: 'pb-section-1',      label: 'LinkedIn' },
-    { id: 'pb-section-resume', label: 'Resume' },
-    { id: 'pb-section-2',      label: 'Profile' },
-    { id: 'pb-section-3',      label: 'Headline' },
-    { id: 'pb-section-4',      label: 'Summary' },
-    { id: 'pb-section-5',      label: 'Skills' },
-    { id: 'pb-section-6',      label: 'Projects' },
-    { id: 'pb-section-7',      label: 'Media' },
+    { id: 'pb-section-1', label: 'Import' },
+    { id: 'pb-section-2', label: 'Profile' },
+    { id: 'pb-section-3', label: 'Headline' },
+    { id: 'pb-section-4', label: 'Summary' },
+    { id: 'pb-section-5', label: 'Skills' },
+    { id: 'pb-section-6', label: 'Projects' },
+    { id: 'pb-section-7', label: 'Media' },
   ]
 
   function scrollToSection(sectionId) {
@@ -462,6 +461,9 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
   const [resumeUploading, setResumeUploading] = useState(false)
   const [resumeData,      setResumeData]      = useState(null)
   const [resumeError,     setResumeError]     = useState(null)
+
+  // Step 3 — PDF source toggle ('linkedin' | 'resume')
+  const [pdfSource, setPdfSource] = useState('linkedin')
 
   // Step 3 — project descriptions
   const [generatingDescs, setGeneratingDescs] = useState(false)
@@ -1252,215 +1254,114 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
           {/* Scrollable edit sections */}
           <div ref={scrollContainerRef} style={{ flex: 1, overflowY: 'auto', padding: '20px 20px 12px' }}>
 
-            {/* LinkedIn PDF Import — shown first so it auto-fills the profile below */}
-            <EditorSection id="pb-section-1" number="1" title="Import from LinkedIn PDF" description="Auto-fills name, headline, location, email, skills, experience & education" defaultOpen={!linkedinData}>
+            {/* Import from PDF — LinkedIn or Resume toggle */}
+            <EditorSection id="pb-section-1" number="1" title="Import from PDF" description="Upload your LinkedIn PDF or resume to auto-fill experience, education & skills" defaultOpen={!linkedinData && !resumeData}>
 
-              {!linkedinData ? (
-                <div>
-                  <p style={{ margin: '0 0 6px', fontSize: '12px', color: '#6b7280', lineHeight: 1.6 }}>
-                    Go to your <strong>LinkedIn profile page</strong> → click <strong>More…</strong> (below your photo) → <strong>Save to PDF</strong>.
-                  </p>
-                  <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#9ca3af', lineHeight: 1.5 }}>
-                    Do not use Settings → Data Privacy export — that gives a ZIP file, not a PDF.
-                  </p>
-                  <input
-                    type="file"
-                    accept=".pdf,application/pdf"
-                    id="linkedin-pdf-upload"
-                    style={{ display: 'none' }}
-                    onChange={handleLinkedinUpload}
-                    disabled={linkedinUploading}
-                  />
-                  <label
-                    htmlFor="linkedin-pdf-upload"
+              {/* Source toggle */}
+              <div style={{ display: 'flex', gap: '6px', marginBottom: '16px', padding: '4px', backgroundColor: '#f1f5f9', borderRadius: '10px' }}>
+                {[{ id: 'linkedin', label: '🔗 LinkedIn PDF' }, { id: 'resume', label: '📄 Resume PDF' }].map(opt => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setPdfSource(opt.id)}
                     style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '7px',
-                      padding: '9px 18px', borderRadius: '8px',
-                      border: '1px solid #0a66c2', backgroundColor: linkedinUploading ? '#f1f5f9' : '#e8f0fd',
-                      color: '#0a66c2', fontSize: '13px', fontWeight: '700',
-                      cursor: linkedinUploading ? 'not-allowed' : 'pointer',
+                      flex: 1, padding: '7px 0', borderRadius: '7px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: '700',
+                      backgroundColor: pdfSource === opt.id ? '#fff' : 'transparent',
+                      color: pdfSource === opt.id ? '#4f46e5' : '#6b7280',
+                      boxShadow: pdfSource === opt.id ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                      transition: 'all 0.15s',
                     }}
-                  >
-                    {linkedinUploading ? '⏳ Extracting…' : '🔗 Upload LinkedIn PDF'}
-                  </label>
-                  {linkedinError && (
-                    <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#dc2626' }}>{linkedinError}</p>
-                  )}
-                </div>
-              ) : (
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#166534' }}>
-                      ✓ LinkedIn profile imported — fields auto-filled below
-                    </span>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <input
-                        type="file"
-                        accept=".pdf,application/pdf"
-                        id="linkedin-pdf-reupload"
-                        style={{ display: 'none' }}
-                        onChange={handleLinkedinUpload}
-                        disabled={linkedinUploading}
-                      />
-                      <label
-                        htmlFor="linkedin-pdf-reupload"
-                        style={{ fontSize: '11px', color: '#0a66c2', cursor: 'pointer', fontWeight: '600' }}
-                      >
-                        {linkedinUploading ? '⏳…' : '🔄 Re-upload'}
-                      </label>
-                      <button
-                        onClick={() => setLinkedinData(null)}
-                        style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '11px', cursor: 'pointer', padding: 0 }}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
-                    {linkedinData.name && (
-                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#dcfce7', color: '#166534' }}>
-                        👤 {linkedinData.name}
-                      </span>
-                    )}
-                    {linkedinData.experience?.length > 0 && (
-                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#dbeafe', color: '#1e40af' }}>
-                        {linkedinData.experience.length} Experience {linkedinData.experience.length === 1 ? 'entry' : 'entries'}
-                      </span>
-                    )}
-                    {linkedinData.education?.length > 0 && (
-                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#fef3c7', color: '#92400e' }}>
-                        {linkedinData.education.length} Education {linkedinData.education.length === 1 ? 'entry' : 'entries'}
-                      </span>
-                    )}
-                    {linkedinData.certifications?.length > 0 && (
-                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#fef9c3', color: '#854d0e' }}>
-                        🏅 {linkedinData.certifications.length} {linkedinData.certifications.length === 1 ? 'Certification' : 'Certifications'}
-                      </span>
-                    )}
-                    {linkedinData.skills?.length > 0 && (
-                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#f3e8ff', color: '#6b21a8' }}>
-                        {linkedinData.skills.length} Skills
-                      </span>
-                    )}
-                  </div>
-                  {linkedinData.experience?.slice(0, 3).map((exp, i) => (
-                    <div key={i} style={{ padding: '8px 12px', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', marginBottom: '6px' }}>
-                      <p style={{ margin: '0 0 1px', fontSize: '12px', fontWeight: '700', color: '#111827' }}>{exp.role}</p>
-                      <p style={{ margin: 0, fontSize: '11px', color: '#6b7280' }}>{exp.company} · {exp.startDate} – {exp.endDate}</p>
-                    </div>
-                  ))}
-                  {(linkedinData.experience?.length ?? 0) > 3 && (
-                    <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#9ca3af' }}>
-                      +{linkedinData.experience.length - 3} more entries visible on public portfolio
+                  >{opt.label}</button>
+                ))}
+              </div>
+
+              {/* ── LinkedIn panel ── */}
+              {pdfSource === 'linkedin' && (
+                !linkedinData ? (
+                  <div>
+                    <p style={{ margin: '0 0 6px', fontSize: '12px', color: '#6b7280', lineHeight: 1.6 }}>
+                      Go to your <strong>LinkedIn profile page</strong> → click <strong>More…</strong> (below your photo) → <strong>Save to PDF</strong>.
                     </p>
-                  )}
-                </div>
+                    <p style={{ margin: '0 0 10px', fontSize: '11px', color: '#9ca3af', lineHeight: 1.5 }}>
+                      Do not use Settings → Data Privacy export — that gives a ZIP file, not a PDF.
+                    </p>
+                    <input type="file" accept=".pdf,application/pdf" id="linkedin-pdf-upload" style={{ display: 'none' }} onChange={handleLinkedinUpload} disabled={linkedinUploading} />
+                    <label htmlFor="linkedin-pdf-upload" style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '9px 18px', borderRadius: '8px', border: '1px solid #0a66c2', backgroundColor: linkedinUploading ? '#f1f5f9' : '#e8f0fd', color: '#0a66c2', fontSize: '13px', fontWeight: '700', cursor: linkedinUploading ? 'not-allowed' : 'pointer' }}>
+                      {linkedinUploading ? '⏳ Extracting…' : '🔗 Upload LinkedIn PDF'}
+                    </label>
+                    {linkedinError && <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#dc2626' }}>{linkedinError}</p>}
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: '700', color: '#166534' }}>✓ LinkedIn profile imported</span>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <input type="file" accept=".pdf,application/pdf" id="linkedin-pdf-reupload" style={{ display: 'none' }} onChange={handleLinkedinUpload} disabled={linkedinUploading} />
+                        <label htmlFor="linkedin-pdf-reupload" style={{ fontSize: '11px', color: '#0a66c2', cursor: 'pointer', fontWeight: '600' }}>{linkedinUploading ? '⏳…' : '🔄 Re-upload'}</label>
+                        <button onClick={() => setLinkedinData(null)} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '11px', cursor: 'pointer', padding: 0 }}>Remove</button>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+                      {linkedinData.name && <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#dcfce7', color: '#166534' }}>👤 {linkedinData.name}</span>}
+                      {linkedinData.experience?.length > 0 && <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#dbeafe', color: '#1e40af' }}>{linkedinData.experience.length} Experience {linkedinData.experience.length === 1 ? 'entry' : 'entries'}</span>}
+                      {linkedinData.education?.length > 0 && <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#fef3c7', color: '#92400e' }}>{linkedinData.education.length} Education {linkedinData.education.length === 1 ? 'entry' : 'entries'}</span>}
+                      {linkedinData.certifications?.length > 0 && <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#fef9c3', color: '#854d0e' }}>🏅 {linkedinData.certifications.length} {linkedinData.certifications.length === 1 ? 'Certification' : 'Certifications'}</span>}
+                      {linkedinData.skills?.length > 0 && <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#f3e8ff', color: '#6b21a8' }}>{linkedinData.skills.length} Skills</span>}
+                    </div>
+                    {linkedinData.experience?.slice(0, 3).map((exp, i) => (
+                      <div key={i} style={{ padding: '8px 12px', borderRadius: '8px', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', marginBottom: '6px' }}>
+                        <p style={{ margin: '0 0 1px', fontSize: '12px', fontWeight: '700', color: '#111827' }}>{exp.role}</p>
+                        <p style={{ margin: 0, fontSize: '11px', color: '#6b7280' }}>{exp.company} · {exp.startDate} – {exp.endDate}</p>
+                      </div>
+                    ))}
+                    {(linkedinData.experience?.length ?? 0) > 3 && <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#9ca3af' }}>+{linkedinData.experience.length - 3} more entries visible on public portfolio</p>}
+                  </div>
+                )
               )}
-            </EditorSection>
 
-            {/* Resume PDF Import */}
-            <EditorSection id="pb-section-resume" number="2" title="Import from Resume PDF" description="Upload any resume PDF to extract your professional summary, experience & skills" defaultOpen={!resumeData}>
-
-              {!resumeData ? (
-                <div>
-                  <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#6b7280', lineHeight: 1.6 }}>
-                    Upload a PDF resume to extract your <strong>professional summary</strong>, experience, skills, and certifications automatically.
-                  </p>
-                  <input
-                    type="file"
-                    accept=".pdf,application/pdf"
-                    id="resume-pdf-upload"
-                    style={{ display: 'none' }}
-                    onChange={handleResumeUpload}
-                    disabled={resumeUploading}
-                  />
-                  <label
-                    htmlFor="resume-pdf-upload"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '7px',
-                      padding: '9px 18px', borderRadius: '8px',
-                      border: '1px solid #059669', backgroundColor: resumeUploading ? '#f1f5f9' : '#ecfdf5',
-                      color: '#059669', fontSize: '13px', fontWeight: '700',
-                      cursor: resumeUploading ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    {resumeUploading ? '⏳ Extracting…' : '📄 Upload Resume PDF'}
-                  </label>
-                  {resumeError && (
-                    <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#dc2626' }}>{resumeError}</p>
-                  )}
-                </div>
-              ) : (
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#166534' }}>✓ Resume imported</span>
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      <input
-                        type="file"
-                        accept=".pdf,application/pdf"
-                        id="resume-pdf-reupload"
-                        style={{ display: 'none' }}
-                        onChange={handleResumeUpload}
-                        disabled={resumeUploading}
-                      />
-                      <label htmlFor="resume-pdf-reupload" style={{ fontSize: '11px', color: '#059669', cursor: 'pointer', fontWeight: '600' }}>
-                        {resumeUploading ? '⏳…' : '🔄 Re-upload'}
-                      </label>
-                      <button onClick={() => setResumeData(null)} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '11px', cursor: 'pointer', padding: 0 }}>
-                        Remove
-                      </button>
+              {/* ── Resume panel ── */}
+              {pdfSource === 'resume' && (
+                !resumeData ? (
+                  <div>
+                    <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#6b7280', lineHeight: 1.6 }}>
+                      Upload any PDF resume to extract your <strong>professional summary</strong>, experience, education, skills, and certifications.
+                    </p>
+                    <input type="file" accept=".pdf,application/pdf" id="resume-pdf-upload" style={{ display: 'none' }} onChange={handleResumeUpload} disabled={resumeUploading} />
+                    <label htmlFor="resume-pdf-upload" style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '9px 18px', borderRadius: '8px', border: '1px solid #059669', backgroundColor: resumeUploading ? '#f1f5f9' : '#ecfdf5', color: '#059669', fontSize: '13px', fontWeight: '700', cursor: resumeUploading ? 'not-allowed' : 'pointer' }}>
+                      {resumeUploading ? '⏳ Extracting…' : '📄 Upload Resume PDF'}
+                    </label>
+                    {resumeError && <p style={{ margin: '8px 0 0', fontSize: '12px', color: '#dc2626' }}>{resumeError}</p>}
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
+                      <span style={{ fontSize: '12px', fontWeight: '700', color: '#166534' }}>✓ Resume imported</span>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <input type="file" accept=".pdf,application/pdf" id="resume-pdf-reupload" style={{ display: 'none' }} onChange={handleResumeUpload} disabled={resumeUploading} />
+                        <label htmlFor="resume-pdf-reupload" style={{ fontSize: '11px', color: '#059669', cursor: 'pointer', fontWeight: '600' }}>{resumeUploading ? '⏳…' : '🔄 Re-upload'}</label>
+                        <button onClick={() => setResumeData(null)} style={{ background: 'none', border: 'none', color: '#9ca3af', fontSize: '11px', cursor: 'pointer', padding: 0 }}>Remove</button>
+                      </div>
+                    </div>
+                    {resumeData.summary && (
+                      <div style={{ marginBottom: '12px', padding: '12px 14px', borderRadius: '8px', backgroundColor: '#f8faff', border: '1px solid #c7d7f7' }}>
+                        <p style={{ margin: '0 0 6px', fontSize: '11px', fontWeight: '700', color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Extracted Summary</p>
+                        <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#374151', lineHeight: 1.6 }}>{resumeData.summary.length > 300 ? resumeData.summary.slice(0, 297) + '…' : resumeData.summary}</p>
+                        <button onClick={() => setEditedNarrative(resumeData.summary)} style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', backgroundColor: '#4f46e5', color: 'white', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>Use this summary</button>
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                      {resumeData.name && <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#dcfce7', color: '#166534' }}>👤 {resumeData.name}</span>}
+                      {resumeData.experience?.length > 0 && <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#dbeafe', color: '#1e40af' }}>{resumeData.experience.length} Experience {resumeData.experience.length === 1 ? 'entry' : 'entries'}</span>}
+                      {resumeData.education?.length > 0 && <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#fef3c7', color: '#92400e' }}>{resumeData.education.length} Education {resumeData.education.length === 1 ? 'entry' : 'entries'}</span>}
+                      {resumeData.skills?.length > 0 && <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#f3e8ff', color: '#6b21a8' }}>{resumeData.skills.length} Skills</span>}
+                      {resumeData.certifications?.length > 0 && <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#fef9c3', color: '#854d0e' }}>🏅 {resumeData.certifications.length} {resumeData.certifications.length === 1 ? 'Certification' : 'Certifications'}</span>}
                     </div>
                   </div>
-
-                  {/* Summary preview + use button */}
-                  {resumeData.summary && (
-                    <div style={{ marginBottom: '12px', padding: '12px 14px', borderRadius: '8px', backgroundColor: '#f8faff', border: '1px solid #c7d7f7' }}>
-                      <p style={{ margin: '0 0 8px', fontSize: '11px', fontWeight: '700', color: '#1e40af', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Extracted Summary</p>
-                      <p style={{ margin: '0 0 10px', fontSize: '12px', color: '#374151', lineHeight: 1.6 }}>
-                        {resumeData.summary.length > 300 ? resumeData.summary.slice(0, 297) + '…' : resumeData.summary}
-                      </p>
-                      <button
-                        onClick={() => setEditedNarrative(resumeData.summary)}
-                        style={{
-                          padding: '6px 14px', borderRadius: '6px', border: 'none',
-                          backgroundColor: '#4f46e5', color: 'white',
-                          fontSize: '12px', fontWeight: '700', cursor: 'pointer',
-                        }}
-                      >
-                        Use this summary
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Data badges */}
-                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                    {resumeData.name && (
-                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#dcfce7', color: '#166534' }}>
-                        👤 {resumeData.name}
-                      </span>
-                    )}
-                    {resumeData.experience?.length > 0 && (
-                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#dbeafe', color: '#1e40af' }}>
-                        {resumeData.experience.length} Experience {resumeData.experience.length === 1 ? 'entry' : 'entries'}
-                      </span>
-                    )}
-                    {resumeData.skills?.length > 0 && (
-                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#f3e8ff', color: '#6b21a8' }}>
-                        {resumeData.skills.length} Skills
-                      </span>
-                    )}
-                    {resumeData.certifications?.length > 0 && (
-                      <span style={{ padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', backgroundColor: '#fef9c3', color: '#854d0e' }}>
-                        🏅 {resumeData.certifications.length} {resumeData.certifications.length === 1 ? 'Certification' : 'Certifications'}
-                      </span>
-                    )}
-                  </div>
-                </div>
+                )
               )}
             </EditorSection>
 
             {/* 0. Personal Profile — auto-filled by LinkedIn above */}
-            <EditorSection id="pb-section-2" number="3" title="Personal Profile" description="Your identity — shown at the top of your public portfolio">
+            <EditorSection id="pb-section-2" number="2" title="Personal Profile" description="Your identity — shown at the top of your public portfolio">
 
               {/* Profile photo upload */}
               <div style={{ marginBottom: '14px' }}>
@@ -1545,7 +1446,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
             </EditorSection>
 
             {/* 3. Headline */}
-            <EditorSection id="pb-section-3" number="4" title="Headline" description="Auto-generated from your repos — edit freely">
+            <EditorSection id="pb-section-3" number="3" title="Headline" description="Auto-generated from your repos — edit freely">
               <input
                 type="text"
                 value={editedHeadline}
@@ -1565,7 +1466,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
             </EditorSection>
 
             {/* 2. Professional Summary */}
-            <EditorSection id="pb-section-4" number="5" title="Professional Summary" description="Auto-generated from your repos — edit freely">
+            <EditorSection id="pb-section-4" number="4" title="Professional Summary" description="Auto-generated from your repos — edit freely">
               <textarea
                 value={editedNarrative}
                 onChange={e => setEditedNarrative(e.target.value)}
@@ -1590,7 +1491,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
               const visibleSkills = showAllSkills ? mergedSkills : mergedSkills.slice(0, SKILL_LIMIT)
               const hiddenCount   = mergedSkills.length - SKILL_LIMIT
               return (
-                <EditorSection id="pb-section-5" number="6" title="Top Skills" description="AI-extracted from repos + skills imported from LinkedIn PDF">
+                <EditorSection id="pb-section-5" number="5" title="Top Skills" description="AI-extracted from repos + skills imported from LinkedIn PDF">
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px' }}>
                     {visibleSkills.map((skill, i) => {
                       const isLinkedIn = skill.source === 'linkedin'
@@ -1641,7 +1542,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
             })()}
 
             {/* 4. Project Summaries */}
-            <EditorSection id="pb-section-6" number="7" title="Project Summaries" description="Edit the one-liner shown on each project card. Generate AI descriptions for detailed project breakdowns.">
+            <EditorSection id="pb-section-6" number="6" title="Project Summaries" description="Edit the one-liner shown on each project card. Generate AI descriptions for detailed project breakdowns.">
                 <div style={{ marginBottom: '14px' }}>
                   <button
                     onClick={handleGenerateDescriptions}
@@ -1716,7 +1617,7 @@ function PortfolioBuilder({ onLogout, onGoToBrowse, onRepoDeleted, autoStart = f
               </EditorSection>
 
             {/* 5. Project Media */}
-            <EditorSection id="pb-section-7" number="8" title="Project Media" description="Auto-detected from README — or paste your own GitHub image/GIF URL" defaultOpen={false}>
+            <EditorSection id="pb-section-7" number="7" title="Project Media" description="Auto-detected from README — or paste your own GitHub image/GIF URL" defaultOpen={false}>
               <p style={{ margin: '0 0 12px', fontSize: '11px', color: '#6b7280', lineHeight: 1.6 }}>
                 Images and GIFs are auto-detected from each repo's README. You can replace them by pasting a different GitHub file URL.
               </p>
